@@ -58,10 +58,12 @@ be checked in seconds rather than on a run.
 3. **Map** — live route and saved routes via osmdroid, camera follow,
    pause gaps, and numbered mile markers.
 4. **Announcements** — mile splits spoken via TTS; start countdown.
-5. **History & detail** *(current)* — run list with week/all-time totals, a
+5. **History & detail** — run list with week/all-time totals, a
    detail screen with the stat block and splits table, delete, and the
    MET-based calorie estimate wired in.
-6. Polish — permission flow, rich notification, data export, field-test fixes.
+6. **Polish** *(current)* — permission rationale flow with graceful degradation,
+   notification controls, GPX/JSON export, and the pace-coloured route. Fixes
+   from field testing are still outstanding; they need a real run first.
 
 ## Checking the maps (Milestone 3)
 
@@ -131,9 +133,49 @@ saved with no estimate and still show 0 kcal.
   with the run. Deleting from the detail screen returns you to the list.
 - With no runs saved, History shows its empty message and no totals header.
 
+## Permissions (Milestone 6)
+
+Location is asked for behind a rationale screen the first time you start an
+activity, and **background location is a separate, optional second ask**. Android
+only offers each permission dialog once, so the app asks for background location
+exactly once and remembers that it did.
+
+Declining background location does not stop you running. Tracking still works
+with the app open; the Track screen shows a dismissible banner explaining that
+recording may stop when the screen does. From Android 11 the "Allow all the
+time" setting exists only in system Settings, so the rationale sends you there
+rather than firing a request Android refuses without showing you anything.
+
+## Checking the polish (Milestone 6)
+
+- **Permissions:** clear the app's data, then press Start. You should see the
+  rationale before Android's own dialog, then the background rationale as a
+  separate step. Decline it and confirm the run still starts and the banner
+  appears; dismiss the banner and confirm it stays gone.
+- **Notification:** start a run and pull down the shade. The notification shows
+  live distance and time plus **Pause / Finish** — **Resume / Finish** once
+  paused, **Start now / Cancel** during a countdown. Finish from the lock screen
+  and confirm the run is saved.
+- **Export a run:** open a saved activity and choose **Export as GPX**. The
+  system file picker suggests `run-YYYY-MM-DD-HHMM.gpx`. Open the result in any
+  map viewer, or import it into another running app; a run that was paused
+  should show a gap rather than a straight line across it.
+- **Export everything:** **Profile → Data → Export all data**. One JSON file
+  with every activity, its route and its splits — this app has no server, so the
+  export is the backup. Import is not built yet.
+- **Pace colours:** turn on **Profile → Preferences → Colour route by pace**,
+  then open a saved run of at least a few hundred metres. The route is drawn
+  green through amber to red with a legend. Colours are relative to *that run* —
+  an easy run and a tempo run each use the whole ramp — so they say fast-and-slow
+  for this run, not in general. Short runs stay a single blue line: there is no
+  spread worth colouring.
+- **Keep screen on:** the preference has existed since milestone 1 and did
+  nothing until now. With it on, the screen should stay awake during a run and
+  go back to normal the moment the run ends.
+
 Validation on the Linux ARM64 development host: the debug APK builds using the
-host's existing x86 resource-compiler compatibility wrapper. 132 of 135 JVM tests
-pass, including the 24 new calorie, totals and calorie-wiring tests; the three
-existing Room tests require Robolectric's native runtime, which does not support
-Linux ARM64. Run the full suite and the device checklists on a supported Android
-development machine.
+host's existing x86 resource-compiler compatibility wrapper. 177 of 180 JVM tests
+pass, including the 52 new permission-gate, notification-spec, GPX, backup-JSON,
+filename and pace-ramp tests; the three existing Room tests require Robolectric's
+native runtime, which does not support Linux ARM64. Run the full suite and the
+device checklists on a supported Android development machine.
