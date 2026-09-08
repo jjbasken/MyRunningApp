@@ -1,6 +1,9 @@
 package com.myrunningapp.data.location
 
+import com.myrunningapp.domain.announce.Announcement
+import com.myrunningapp.domain.announce.Announcer
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.RunSessionState
 import com.myrunningapp.domain.tracking.GpsFix
 import com.myrunningapp.domain.tracking.RunSession
 import com.myrunningapp.domain.tracking.RunSessionEvent
@@ -25,12 +28,17 @@ import javax.inject.Singleton
  * screen wants to observe [snapshot] without binding to a service first. The
  * service's job is to keep the process alive and to push fixes in here.
  *
+ * It is also where the run finds its voice: the session reports what happened and
+ * this class decides what is worth saying out loud, so the notification, the screen
+ * and the announcements all follow from the same events.
+ *
  * Every mutating call takes a [Mutex], so GPS callbacks and button presses cannot
  * interleave inside the [RunSession], which is not thread-safe.
  */
 @Singleton
 class RunTracker @Inject constructor(
     private val recorder: RunRecorder,
+    private val announcer: Announcer,
     private val clock: Clock,
 ) {
 
@@ -92,14 +100,18 @@ class RunTracker @Inject constructor(
 
     suspend fun pause() = mutex.withLock {
         val live = session ?: return@withLock
+        if (live.snapshot.state != RunSessionState.TRACKING) return@withLock
         live.pause(clock.instant())
         flush(force = true)
+        announcer.announce(Announcement.Paused)
         publish(live)
     }
 
     suspend fun resume() = mutex.withLock {
         val live = session ?: return@withLock
+        if (live.snapshot.state != RunSessionState.PAUSED) return@withLock
         live.resume(clock.instant())
+        announcer.announce(Announcement.Resumed)
         publish(live)
     }
 
@@ -113,6 +125,9 @@ class RunTracker @Inject constructor(
     suspend fun cancel() = mutex.withLock {
         val live = session ?: return@withLock
         live.cancel(clock.instant())
+        // A countdown cue queued a moment ago would otherwise be spoken into a
+        // run that no longer exists.
+        announcer.stop()
         clear()
     }
 
@@ -121,18 +136,24 @@ class RunTracker @Inject constructor(
         val live = session ?: return@withLock
         val endedAt = clock.instant()
         val events = live.finish(endedAt)
-        if (live.snapshot.state != com.myrunningapp.domain.model.RunSessionState.FINISHED) {
-            return@withLock
-        }
+        val summary = live.snapshot
+        if (summary.state != RunSessionState.FINISHED) return@withLock
 
         flush(force = true)
         handleSplits(events)
 
         val id = runId
         if (id != null) {
-            recorder.finishRun(id, live.snapshot, endedAt)
+            recorder.finishRun(id, summary, endedAt)
             _lastFinishedRunId.value = id
         }
+        announcer.announce(
+            Announcement.Finished(
+                distanceMeters = summary.distanceMeters,
+                movingDurationSec = summary.movingDurationSec,
+                avgPaceSecPerMile = summary.avgPaceSecPerMile,
+            ),
+        )
         clear()
     }
 
@@ -153,7 +174,36 @@ class RunTracker @Inject constructor(
         }
         flush(force = false)
         handleSplits(events)
+        announce(events)
         publish(live)
+    }
+
+    /**
+     * Turns session events into speech.
+     *
+     * Only whole miles are announced: [RunSessionEvent.FinalSplitCompleted] is a
+     * partial mile that belongs in the splits table but would be a lie out loud,
+     * and the finish line covers that stretch anyway.
+     */
+    private fun announce(events: List<RunSessionEvent>) {
+        events.forEach { event ->
+            when (event) {
+                is RunSessionEvent.TrackingStarted ->
+                    announcer.announce(Announcement.Started)
+                is RunSessionEvent.CountdownTick ->
+                    if (event.secondsRemaining in 1..COUNTDOWN_CUE_FROM) {
+                        announcer.announce(Announcement.CountdownCue(event.secondsRemaining))
+                    }
+                is RunSessionEvent.MileCompleted -> announcer.announce(
+                    Announcement.MileCompleted(
+                        mileNumber = event.split.splitNumber,
+                        totalMovingSec = event.split.cumulativeMovingSec,
+                        lastMilePaceSec = event.split.paceSecPerMile,
+                    ),
+                )
+                else -> Unit
+            }
+        }
     }
 
     private suspend fun openRunRow(live: RunSession) {
@@ -210,5 +260,7 @@ class RunTracker @Inject constructor(
         /** Roughly the design's "flush every ten seconds" at a 1 Hz fix rate. */
         val FLUSH_INTERVAL: Duration = Duration.ofSeconds(10)
         const val MAX_BUFFERED_POINTS = 20
+        /** The design's "3, 2, 1, go" — earlier seconds would just be nagging. */
+        const val COUNTDOWN_CUE_FROM = 3
     }
 }

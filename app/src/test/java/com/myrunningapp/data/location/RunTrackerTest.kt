@@ -1,5 +1,7 @@
 package com.myrunningapp.data.location
 
+import com.myrunningapp.domain.announce.Announcement
+import com.myrunningapp.domain.announce.Announcer
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
 import com.myrunningapp.domain.tracking.GpsFix
@@ -8,6 +10,7 @@ import com.myrunningapp.domain.tracking.RunSnapshot
 import com.myrunningapp.domain.tracking.TrackedPoint
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,6 +23,9 @@ import java.time.ZoneOffset
  * and the database, so these tests are about *when* things are written: a run row
  * that only appears once tracking really starts, points batched rather than written
  * one at a time, and a summary that lands exactly once at the end.
+ *
+ * It is also where *what gets said* is decided, so the announcement rules — a
+ * whole mile speaks, a partial final mile does not — are pinned down here.
  */
 class RunTrackerTest {
 
@@ -69,10 +75,25 @@ class RunTrackerTest {
         }
     }
 
+    /** Records what the tracker asked to be said, in order. */
+    private class FakeAnnouncer : Announcer {
+        val spoken = mutableListOf<Announcement>()
+        var stopped = 0
+
+        override fun announce(announcement: Announcement) {
+            spoken += announcement
+        }
+
+        override fun stop() {
+            stopped++
+        }
+    }
+
     private val t0: Instant = Instant.parse("2026-09-08T10:00:00Z")
     private val clock = TestClock(t0)
     private val recorder = FakeRecorder()
-    private val tracker = RunTracker(recorder, clock)
+    private val announcer = FakeAnnouncer()
+    private val tracker = RunTracker(recorder, announcer, clock)
 
     private fun at(seconds: Long) { clock.now = t0.plusSeconds(seconds) }
 
@@ -317,6 +338,108 @@ class RunTrackerTest {
         tracker.tick()
 
         assertEquals(45L, tracker.snapshot.value.movingDurationSec)
+    }
+
+    // --- announcements -------------------------------------------------------
+
+    @Test
+    fun `crossing a mile marker announces that mile`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 620)
+
+        val mile = announcer.spoken.filterIsInstance<Announcement.MileCompleted>().single()
+        assertEquals(1, mile.mileNumber)
+        // A mile at 3 m/s is 536 s, and the crossing is interpolated inside a leg.
+        assertEquals(536.0, mile.lastMilePaceSec, 1.0)
+        assertEquals(536.0, mile.totalMovingSec.toDouble(), 1.0)
+    }
+
+    @Test
+    fun `the announced total time is the time at the crossing not at the finish`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 620)
+
+        val mile = announcer.spoken.filterIsInstance<Announcement.MileCompleted>().single()
+        assertTrue(
+            "announced ${'$'}{mile.totalMovingSec}s of a 620s run",
+            mile.totalMovingSec < 600,
+        )
+    }
+
+    @Test
+    fun `the partial last mile is stored but never spoken`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 620)
+        at(620)
+        tracker.finish()
+
+        assertEquals(listOf(1, 2), recorder.splits.map { it.splitNumber })
+        assertEquals(
+            listOf(1),
+            announcer.spoken.filterIsInstance<Announcement.MileCompleted>()
+                .map { it.mileNumber },
+        )
+    }
+
+    @Test
+    fun `the countdown speaks only the last three seconds and then go`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 10, weightKg = 70.0)
+        for (second in 1..10) {
+            at(second.toLong())
+            tracker.tick()
+        }
+
+        val cues = announcer.spoken.filterIsInstance<Announcement.CountdownCue>()
+        assertEquals(listOf(3, 2, 1), cues.map { it.secondsRemaining })
+        assertEquals(Announcement.Started, announcer.spoken.last())
+    }
+
+    @Test
+    fun `cancelling a countdown silences anything still queued`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 10, weightKg = 70.0)
+        at(8)
+        tracker.tick()
+        tracker.cancel()
+
+        assertEquals(1, announcer.stopped)
+        assertFalse(announcer.spoken.contains(Announcement.Started))
+    }
+
+    @Test
+    fun `pause and resume are announced once each`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 3)
+        at(3)
+        tracker.pause()
+        tracker.pause()
+        at(20)
+        tracker.resume()
+        tracker.resume()
+
+        assertEquals(1, announcer.spoken.count { it == Announcement.Paused })
+        assertEquals(1, announcer.spoken.count { it == Announcement.Resumed })
+    }
+
+    @Test
+    fun `finishing announces the run summary`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 620)
+        at(620)
+        tracker.finish()
+
+        val done = announcer.spoken.filterIsInstance<Announcement.Finished>().single()
+        assertEquals(1860.0, done.distanceMeters, 5.0)
+        assertEquals(620L, done.movingDurationSec)
+        assertTrue(done.avgPaceSecPerMile > 0.0)
+    }
+
+    @Test
+    fun `an idle tracker says nothing`() = runTest {
+        tracker.pause()
+        tracker.resume()
+        tracker.finish()
+
+        assertTrue(announcer.spoken.isEmpty())
     }
 
     @Test

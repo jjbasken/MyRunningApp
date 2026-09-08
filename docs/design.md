@@ -145,7 +145,7 @@ plus `COUNTDOWN → IDLE` on cancel.
 
 ## Announcements
 
-**AnnouncementEngine** wraps Android `TextToSpeech`.
+**`TextToSpeechAnnouncer`** wraps Android `TextToSpeech`.
 - Triggered by the mile-crossing event.
 - Text: *"3 miles. Time, 27 minutes 42 seconds. Last mile pace, 9 minutes 5 seconds."*
 - Also short cues on Start, Pause, Resume, Finish ("Run complete. Total distance
@@ -155,6 +155,10 @@ plus `COUNTDOWN → IDLE` on cancel.
 - Setting to mute the voice entirely.
 - Announcement text building is a **pure function** (event → string) so it is
   unit-tested without TTS.
+- The engine is a process-wide singleton, not owned by the tracking service: the
+  finish line is still being spoken while the service is stopping itself.
+- Only whole miles are spoken. The partial final split goes in the splits table
+  but never gets a mile announcement — the finish line covers that stretch.
 
 ## Map (osmdroid)
 
@@ -240,7 +244,15 @@ Each milestone builds, runs, and is testable on its own.
    history totals and management remain in milestone 5.
 4. **Announcements** — `TextToSpeech` engine; mile splits computed, persisted, and
    spoken; audio-focus ducking; the Start-now / Start-in-30s countdown + its
-   setting.
+   setting. *Built as three pieces:* `AnnouncementText` turns an event into a
+   sentence and is a pure function, so every line — "1 mile" rather than
+   "1 miles", "9 minutes" rather than "9 minutes 0 seconds" — is pinned down by
+   unit tests; `Announcer` is the interface `RunTracker` speaks through, so the
+   rules about *what* is worth saying are testable against a fake; and
+   `TextToSpeechAnnouncer` is the one Android-facing piece, handling engine
+   start-up latency, transient `MAY_DUCK` audio focus and the mute preference.
+   The countdown state machine and its setting already existed from milestones 1
+   and 2; this milestone gave them their voice ("3, 2, 1, go").
 5. **History & detail** — run list with totals header; detail screen with splits
    table; delete; calorie calculation wired in.
 6. **Polish** — permission rationale flow; notification with live stats +
