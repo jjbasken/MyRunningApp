@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -41,9 +42,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
+import com.myrunningapp.data.export.RunExporter
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.CountdownLength
 import com.myrunningapp.domain.model.Sex
+import com.myrunningapp.ui.export.DocumentExportEffect
 import com.myrunningapp.ui.theme.MyRunningTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -65,6 +68,22 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         }
     }
 
+    val pendingExport by viewModel.pendingExport.collectAsStateWithLifecycle()
+    val failedMessage = stringResource(R.string.export_failed)
+    val exportedMessage = stringResource(R.string.export_saved, pendingExport?.fileName.orEmpty())
+
+    DocumentExportEffect(
+        document = pendingExport,
+        mimeType = RunExporter.JSON_MIME,
+        onCancelled = viewModel::onExportHandled,
+        onFinished = { saved ->
+            scope.launch {
+                snackbarHostState.showSnackbar(if (saved) exportedMessage else failedMessage)
+            }
+            viewModel.onExportHandled()
+        },
+    )
+
     ProfileContent(
         state = state,
         snackbarHostState = snackbarHostState,
@@ -73,6 +92,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         onVoiceChange = viewModel::setVoiceEnabled,
         onKeepScreenOnChange = viewModel::setKeepScreenOn,
         onPaceColorChange = viewModel::setColorRouteByPace,
+        onExportAll = viewModel::exportEverything,
     )
 }
 
@@ -86,6 +106,7 @@ private fun ProfileContent(
     onVoiceChange: (Boolean) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit,
     onPaceColorChange: (Boolean) -> Unit,
+    onExportAll: () -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.profile_title)) }) },
@@ -200,6 +221,21 @@ private fun ProfileContent(
                 onCheckedChange = onPaceColorChange,
             )
 
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            SectionHeader(stringResource(R.string.profile_data))
+            Text(
+                stringResource(R.string.profile_export_all_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onExportAll, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.profile_export_all))
+            }
+
             Spacer(Modifier.height(32.dp))
         }
     }
@@ -264,6 +300,7 @@ private fun ProfileContentPreview() {
             onVoiceChange = {},
             onKeepScreenOnChange = {},
             onPaceColorChange = {},
+            onExportAll = {},
         )
     }
 }

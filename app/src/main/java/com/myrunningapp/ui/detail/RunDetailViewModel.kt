@@ -3,6 +3,9 @@ package com.myrunningapp.ui.detail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.myrunningapp.data.export.ExportDocument
+import com.myrunningapp.data.export.RunExporter
+import com.myrunningapp.data.prefs.PreferencesRepository
 import com.myrunningapp.data.repository.RunRepository
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.Run
@@ -24,11 +27,15 @@ data class RunDetailUiState(
     val run: Run? = null,
     val points: List<RouteCoordinate> = emptyList(),
     val splits: List<Split> = emptyList(),
+    /** From preferences; the live map never colours by pace. */
+    val colorRouteByPace: Boolean = false,
 )
 
 @HiltViewModel
 class RunDetailViewModel @Inject constructor(
     private val repository: RunRepository,
+    private val preferencesRepository: PreferencesRepository,
+    private val exporter: RunExporter,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -38,14 +45,41 @@ class RunDetailViewModel @Inject constructor(
         repository.run(runId),
         repository.points(runId),
         repository.splits(runId),
-    ) { run, points, splits ->
+        preferencesRepository.preferences,
+    ) { run, points, splits, preferences ->
         RunDetailUiState(
             loading = false,
             run = run,
-            points = points.map { RouteCoordinate(it.latitude, it.longitude, it.segmentIndex) },
+            points = points.map {
+                RouteCoordinate(
+                    latitude = it.latitude,
+                    longitude = it.longitude,
+                    segmentIndex = it.segmentIndex,
+                    // Carried only here: colouring by pace needs to know when
+                    // each fix was taken, and the live map has no use for it.
+                    timestampMillis = it.timestamp.toEpochMilli(),
+                )
+            },
             splits = splits,
+            colorRouteByPace = preferences.colorRouteByPace,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RunDetailUiState())
+
+    private val _pendingExport = MutableStateFlow<ExportDocument?>(null)
+    /**
+     * The GPX waiting for somewhere to go. The screen owns the Storage Access
+     * Framework picker — a ViewModel has no Activity to launch one from — so it
+     * consumes this and calls [onExportHandled].
+     */
+    val pendingExport: StateFlow<ExportDocument?> = _pendingExport.asStateFlow()
+
+    fun exportRun() {
+        viewModelScope.launch { _pendingExport.value = exporter.exportRun(runId) }
+    }
+
+    fun onExportHandled() {
+        _pendingExport.value = null
+    }
 
     private val _deleted = MutableStateFlow(false)
     /**

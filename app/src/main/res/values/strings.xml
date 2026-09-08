@@ -59,6 +59,8 @@
     <string name="map_follow">Follow position</string>
     <string name="map_waiting">Your route appears here when GPS points are received.</string>
     <string name="map_empty">No GPS points recorded for this activity.</string>
+    <string name="map_pace_faster">Faster</string>
+    <string name="map_pace_slower">Slower</string>
     <string name="route_back">Back</string>
     <string name="route_not_found">This activity is no longer available.</string>
     <!-- Shared -->
@@ -93,4 +95,25 @@
     <string name="detail_split_time">Time</string>
     <string name="detail_delete">Delete this activity</string>
     <string name="detail_delete_message">This activity, its route and its splits will be removed. This cannot be undone.</string>
+    <string name="detail_export">Export as GPX</string>
+
+    <!-- Permissions -->
+    <string name="permission_location_title">Location access</string>
+    <string name="permission_location_message">MyRunningApp needs your location to measure how far you go and draw your route. Nothing leaves your phone.</string>
+    <string name="permission_background_title">Keep tracking with the screen off</string>
+    <string name="permission_background_message">To keep recording once your screen turns off — a phone in a pocket, for most of a run — Android needs background location access, set to “Allow all the time”.\n\nYou can skip this. Tracking still works while the app is open.</string>
+    <string name="permission_background_settings">Android asks for this in Settings: choose Permissions, then Location, then “Allow all the time”.</string>
+    <string name="permission_allow">Allow</string>
+    <string name="permission_open_settings">Open settings</string>
+    <string name="permission_not_now">Not now</string>
+    <string name="permission_denied">Location is required to track a run. You can grant it in Settings.</string>
+    <string name="track_background_warning">Background location is off, so tracking may stop when your screen does. Keep the app open, or grant it in Settings.</string>
+    <string name="action_dismiss">Dismiss</string>
+
+    <!-- Data export -->
+    <string name="profile_data">Data</string>
+    <string name="profile_export_all">Export all data (JSON)</string>
+    <string name="profile_export_all_hint">One file with every activity, its route and its splits — this app has no server, so the export is the backup.</string>
+    <string name="export_saved">Saved %1$s</string>
+    <string name="export_failed">Could not write the file</string>
 </resources>

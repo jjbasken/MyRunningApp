@@ -2,8 +2,6 @@ package com.myrunningapp.ui.track
 
 import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
@@ -21,11 +19,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,23 +35,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
 import com.myrunningapp.data.location.LocationTrackingService
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
+import com.myrunningapp.domain.permission.PermissionGate
+import com.myrunningapp.domain.permission.PermissionStatus
+import com.myrunningapp.domain.permission.PermissionStep
 import com.myrunningapp.domain.tracking.RunSnapshot
+import com.myrunningapp.ui.permissions.BackgroundRationaleDialog
+import com.myrunningapp.ui.permissions.ForegroundRationaleDialog
+import com.myrunningapp.ui.permissions.appSettingsIntent
+import com.myrunningapp.ui.permissions.backgroundLocationNeedsSettings
+import com.myrunningapp.ui.permissions.foregroundPermissions
+import com.myrunningapp.ui.permissions.locationGrants
 
 @Composable
 fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hiltViewModel()) {
     val route by viewModel.route.collectAsStateWithLifecycle()
-    val mapPoints = remember(route) { route.map { RouteCoordinate(it.fix.latitude, it.fix.longitude, it.segmentIndex) } }
+    val mapPoints = remember(route) {
+        route.map { RouteCoordinate(it.fix.latitude, it.fix.longitude, it.segmentIndex) }
+    }
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val startRequest by viewModel.startRequest.collectAsStateWithLifecycle()
@@ -58,13 +72,64 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
 
     // The permission round trip loses the button's argument, so hold on to it.
     var pendingCountdown by rememberSaveable { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf<PermissionStep?>(null) }
+    var foregroundDenied by remember { mutableStateOf(false) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { granted ->
-        if (granted[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
-            viewModel.requestStart(withCountdown = pendingCountdown)
+    // Re-read on every resume: a trip to Settings grants permissions without
+    // ever calling back into a launcher.
+    var grants by remember { mutableStateOf(context.locationGrants()) }
+    LifecycleResumeEffect(Unit) {
+        grants = context.locationGrants()
+        onPauseOrDispose { }
+    }
+
+    val status = PermissionStatus(
+        fineLocationGranted = grants.fineLocationGranted,
+        backgroundLocationGranted = grants.backgroundLocationGranted,
+        notificationsGranted = grants.notificationsGranted,
+        backgroundAlreadyAsked = state.backgroundLocationAsked,
+        backgroundWarningDismissed = state.backgroundWarningDismissed,
+    )
+
+    // Walks the gate forward one step at a time, starting the run once nothing
+    // is left to ask. Reads the grants fresh rather than trusting `status`:
+    // that was captured last composition, and a permission may have been
+    // granted since — by a launcher callback, or over in Settings.
+    fun proceed() {
+        val fresh = context.locationGrants()
+        grants = fresh
+        val step = PermissionGate.next(
+            status.copy(
+                fineLocationGranted = fresh.fineLocationGranted,
+                backgroundLocationGranted = fresh.backgroundLocationGranted,
+                notificationsGranted = fresh.notificationsGranted,
+            ),
+        )
+        when (step) {
+            PermissionStep.Ready -> viewModel.requestStart(pendingCountdown)
+            else -> dialog = step
         }
+    }
+
+    val foregroundLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        grants = context.locationGrants()
+        if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            foregroundDenied = false
+            proceed()
+        } else {
+            foregroundDenied = true
+        }
+    }
+
+    val backgroundLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { _ ->
+        grants = context.locationGrants()
+        viewModel.onBackgroundLocationAsked()
+        // Granted or not, the run itself was never blocked on this.
+        viewModel.requestStart(pendingCountdown)
     }
 
     // The ViewModel has no Context, so starting the service happens here.
@@ -82,13 +147,18 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
         viewModel.onStartHandled()
     }
 
+    // Only while a run is actually going: a phone that never sleeps on the
+    // history screen would be a bug, not a feature.
+    val view = LocalView.current
+    val keepScreenOn = state.keepScreenOn && state.snapshot.isActive
+    DisposableEffect(view, keepScreenOn) {
+        view.keepScreenOn = keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
+
     val onStart: (Boolean) -> Unit = { withCountdown ->
-        if (context.hasLocationPermission()) {
-            viewModel.requestStart(withCountdown)
-        } else {
-            pendingCountdown = withCountdown
-            permissionLauncher.launch(requiredPermissions())
-        }
+        pendingCountdown = withCountdown
+        proceed()
     }
 
     Column(
@@ -101,9 +171,24 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (foregroundDenied) {
+                WarningBanner(
+                    message = stringResource(R.string.permission_denied),
+                    actionLabel = stringResource(R.string.permission_open_settings),
+                    onAction = { context.startActivity(appSettingsIntent(context)) },
+                )
+            } else if (PermissionGate.showsBackgroundWarning(status)) {
+                WarningBanner(
+                    message = stringResource(R.string.track_background_warning),
+                    actionLabel = stringResource(R.string.action_dismiss),
+                    onAction = viewModel::dismissBackgroundWarning,
+                )
+            }
             RouteMap(
                 points = mapPoints,
-                currentPosition = state.snapshot.lastFix?.let { RouteCoordinate(it.latitude, it.longitude, state.snapshot.segmentIndex) },
+                currentPosition = state.snapshot.lastFix?.let {
+                    RouteCoordinate(it.latitude, it.longitude, state.snapshot.segmentIndex)
+                },
                 live = true,
                 modifier = Modifier.fillMaxWidth().height(280.dp),
             )
@@ -136,6 +221,58 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
                 onResume = { context.sendCommand(LocationTrackingService.ACTION_RESUME) },
                 onFinish = { context.sendCommand(LocationTrackingService.ACTION_FINISH) },
             )
+        }
+    }
+
+    when (dialog) {
+        PermissionStep.ForegroundRationale -> ForegroundRationaleDialog(
+            onAllow = {
+                dialog = null
+                foregroundLauncher.launch(foregroundPermissions())
+            },
+            onDismiss = { dialog = null },
+        )
+        PermissionStep.BackgroundRationale -> BackgroundRationaleDialog(
+            needsSettings = backgroundLocationNeedsSettings(),
+            onAllow = {
+                dialog = null
+                viewModel.onBackgroundLocationAsked()
+                if (backgroundLocationNeedsSettings()) {
+                    // The user leaves for Settings; the run waits for them to
+                    // come back and press Start, rather than beginning unseen.
+                    context.startActivity(appSettingsIntent(context))
+                } else {
+                    backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                }
+            },
+            onSkip = {
+                dialog = null
+                viewModel.onBackgroundLocationAsked()
+                viewModel.requestStart(pendingCountdown)
+            },
+        )
+        else -> Unit
+    }
+}
+
+/** A standing explanation of something that is off, with the one action that fixes it. */
+@Composable
+private fun WarningBanner(message: String, actionLabel: String, onAction: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)) {
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onAction) { Text(actionLabel) }
+            }
         }
     }
 }
@@ -282,19 +419,3 @@ private fun Context.sendCommand(action: String) {
         LocationTrackingService.commandIntent(this, action),
     )
 }
-
-private fun Context.hasLocationPermission(): Boolean =
-    ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
-        PackageManager.PERMISSION_GRANTED
-
-/**
- * Background location is asked for separately (Android sends the user to Settings)
- * and is a milestone 6 concern; without it tracking still works with the app open.
- */
-private fun requiredPermissions(): Array<String> = buildList {
-    add(Manifest.permission.ACCESS_FINE_LOCATION)
-    add(Manifest.permission.ACCESS_COARSE_LOCATION)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        add(Manifest.permission.POST_NOTIFICATIONS)
-    }
-}.toTypedArray()

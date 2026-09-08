@@ -3,7 +3,16 @@ package com.myrunningapp.ui.map
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.tracking.Geo
 
-data class RouteCoordinate(val latitude: Double, val longitude: Double, val segmentIndex: Int)
+data class RouteCoordinate(
+    val latitude: Double,
+    val longitude: Double,
+    val segmentIndex: Int,
+    /**
+     * When the fix was taken. Null on the live map, which has no use for it —
+     * only [PaceColors] needs times, and it colours finished runs.
+     */
+    val timestampMillis: Long? = null,
+)
 data class RouteMileMarker(val number: Int, val position: RouteCoordinate)
 
 /** Uses the same accepted points and distance math as tracking; pause gaps add no distance. */

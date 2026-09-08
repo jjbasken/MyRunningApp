@@ -267,6 +267,25 @@ Each milestone builds, runs, and is testable on its own.
    each other and must agree.
 6. **Polish** — permission rationale flow; notification with live stats +
    controls; export to GPX/JSON; pace-colored polyline; fixes from field testing.
+   *Built by pulling a pure decision out of each Android-facing piece:*
+   `PermissionGate` answers "what do we ask next" from four booleans, so the
+   order — foreground first because a run is impossible without it, background
+   as a separate optional ask, notifications never blocking — is tested without
+   a device; `RunNotificationSpec` says which controls belong to which run
+   state, leaving the service to turn them into `PendingIntent`s. Background
+   location is asked for exactly once and its refusal costs screen-off tracking
+   rather than the run, so a declined ask leaves a dismissible banner instead of
+   a dead Start button. Export writes GPX per run and one JSON backup of
+   everything; both writers are pure functions over rows, and the Storage Access
+   Framework `Uri` never reaches them — the screen owns the picker and the
+   bytes, which is also why the app asks for no storage permission at all. The
+   pace-coloured polyline cuts the route into ~100 m chunks rather than colouring
+   per fix (1 Hz pace is mostly GPS noise) and scales its ramp to the 10th and
+   90th percentile of *that run's* own paces, so one wait at a traffic light
+   does not wash the whole route into "fast". It stays on the detail screen:
+   the live map redraws every second and the ramp needs a finished run's
+   distribution to normalise against. Field-testing fixes are still to come —
+   they need a real run first.
 
 ## Verification
 
