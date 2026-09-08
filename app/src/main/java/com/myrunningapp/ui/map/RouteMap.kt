@@ -6,7 +6,10 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.view.MotionEvent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -16,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -41,6 +46,7 @@ fun RouteMap(
     modifier: Modifier = Modifier,
     currentPosition: RouteCoordinate? = null,
     live: Boolean = false,
+    colorByPace: Boolean = false,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -78,16 +84,33 @@ fun RouteMap(
             map.onDetach()
         }
     }
+    // Pace bands are the expensive part; recompute only when the route changes.
+    val paceBands = remember(points, colorByPace) {
+        if (colorByPace) PaceColors.bands(points) else emptyList()
+    }
     // Timer recompositions do not rebuild route overlays or reset a panned camera.
-    LaunchedEffect(map, points, currentPosition) {
+    LaunchedEffect(map, points, currentPosition, paceBands) {
         map.overlays.toList().forEach { it.onDetach(map) }
         map.overlays.clear()
-        points.groupBy { it.segmentIndex }.values.forEach { segment ->
-            map.overlays.add(Polyline(map).apply {
-                setPoints(segment.map { it.geoPoint() })
-                outlinePaint.color = Color.rgb(25, 100, 210)
-                outlinePaint.strokeWidth = 5 * context.resources.displayMetrics.density
-            })
+        val strokeWidth = 5 * context.resources.displayMetrics.density
+        if (paceBands.isNotEmpty()) {
+            paceBands.forEach { band ->
+                map.overlays.add(Polyline(map).apply {
+                    setPoints(band.points.map { it.geoPoint() })
+                    outlinePaint.color = band.rgb or ALPHA_OPAQUE
+                    outlinePaint.strokeWidth = strokeWidth
+                })
+            }
+        } else {
+            // No pace to show, or the route is too short to have one: fall back
+            // to a single colour per segment rather than drawing nothing.
+            points.groupBy { it.segmentIndex }.values.forEach { segment ->
+                map.overlays.add(Polyline(map).apply {
+                    setPoints(segment.map { it.geoPoint() })
+                    outlinePaint.color = Color.rgb(25, 100, 210)
+                    outlinePaint.strokeWidth = strokeWidth
+                })
+            }
         }
         if (!live) {
             mileMarkers(points).forEach { mile ->
@@ -132,6 +155,9 @@ fun RouteMap(
                 }
             }
         }
+        if (paceBands.isNotEmpty()) {
+            PaceLegend(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp))
+        }
         if (points.isEmpty() && currentPosition == null) {
             Surface(modifier = Modifier.align(Alignment.Center), shape = MaterialTheme.shapes.small) {
                 Text(stringResource(if (live) R.string.map_waiting else R.string.map_empty), Modifier.padding(12.dp))
@@ -145,7 +171,44 @@ fun RouteMap(
     }
 }
 
+/** osmdroid paints with ARGB ints; [PaceColors] deals only in RGB. */
+private const val ALPHA_OPAQUE = 0xFF000000.toInt()
+
 private fun RouteCoordinate.geoPoint() = GeoPoint(latitude, longitude)
+
+/**
+ * Says which end of the ramp is which. Without it the colours are decorative —
+ * green and red mean nothing until you know they mean fast and slow.
+ */
+@Composable
+private fun PaceLegend(modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = MaterialTheme.shapes.small) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.map_pace_faster),
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Box(
+                Modifier
+                    .padding(horizontal = 6.dp)
+                    .size(width = 48.dp, height = 6.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            PaceColors.rampStops().map { ComposeColor(it or ALPHA_OPAQUE) },
+                        ),
+                        MaterialTheme.shapes.extraSmall,
+                    ),
+            )
+            Text(
+                stringResource(R.string.map_pace_slower),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
 
 private fun numberedPin(map: MapView, number: Int): BitmapDrawable {
     val size = (30 * map.resources.displayMetrics.density).toInt()

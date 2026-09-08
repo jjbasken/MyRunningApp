@@ -24,6 +24,10 @@ data class TrackUiState(
     /** The type chosen for the *next* run; a run in progress keeps its own. */
     val selectedActivityType: ActivityType,
     val countdownSeconds: Int,
+    val keepScreenOn: Boolean,
+    /** Remembered permission-flow state; see [com.myrunningapp.domain.permission.PermissionGate]. */
+    val backgroundLocationAsked: Boolean,
+    val backgroundWarningDismissed: Boolean,
 )
 
 /**
@@ -54,6 +58,9 @@ class TrackViewModel @Inject constructor(
             snapshot = snapshot,
             selectedActivityType = activityType,
             countdownSeconds = preferences.countdownLength.seconds,
+            keepScreenOn = preferences.keepScreenOnDuringRun,
+            backgroundLocationAsked = preferences.backgroundLocationAsked,
+            backgroundWarningDismissed = preferences.backgroundWarningDismissed,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -62,6 +69,11 @@ class TrackViewModel @Inject constructor(
             snapshot = RunSnapshot.idle(ActivityType.RUN),
             selectedActivityType = ActivityType.RUN,
             countdownSeconds = 0,
+            keepScreenOn = false,
+            // Assume the conversation has happened until preferences load, so a
+            // rationale dialog never flashes up on the strength of a default.
+            backgroundLocationAsked = true,
+            backgroundWarningDismissed = true,
         ),
     )
 
@@ -100,5 +112,14 @@ class TrackViewModel @Inject constructor(
 
     fun onStartHandled() {
         _startRequest.value = null
+    }
+
+    /** Android shows its permission dialog once; record that we have had the ask. */
+    fun onBackgroundLocationAsked() {
+        viewModelScope.launch { preferencesRepository.setBackgroundLocationAsked(true) }
+    }
+
+    fun dismissBackgroundWarning() {
+        viewModelScope.launch { preferencesRepository.setBackgroundWarningDismissed(true) }
     }
 }

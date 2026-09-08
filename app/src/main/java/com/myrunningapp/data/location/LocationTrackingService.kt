@@ -18,6 +18,8 @@ import com.myrunningapp.R
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
+import com.myrunningapp.domain.tracking.RunNotificationAction
+import com.myrunningapp.domain.tracking.RunNotificationSpec
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -107,38 +109,89 @@ class LocationTrackingService : LifecycleService() {
                 stopSelf()
                 return@collectLatest
             }
-            val text = when (snapshot.state) {
-                RunSessionState.COUNTDOWN -> getString(
-                    R.string.track_notification_countdown,
-                    snapshot.countdownSecondsRemaining,
-                )
-                RunSessionState.PAUSED -> getString(R.string.track_notification_paused)
-                else -> getString(
-                    R.string.track_notification_running,
-                    Units.formatMiles(snapshot.distanceMeters),
-                    Units.formatDuration(snapshot.movingDurationSec),
-                )
-            }
-            notificationManager().notify(NOTIFICATION_ID, buildNotification(text))
+            notificationManager()
+                .notify(NOTIFICATION_ID, buildNotification(RunNotificationSpec.forSnapshot(snapshot)))
         }
     }
 
-    private fun buildNotification(text: String): Notification {
+    /**
+     * The run, on the lock screen: live distance and time, and the controls for
+     * whatever state it is in — so a run can be paused or finished without
+     * getting the phone out of a pocket and unlocking it.
+     */
+    private fun buildNotification(spec: RunNotificationSpec): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(text)
+            .setContentText(notificationText(spec))
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(open)
             .setOngoing(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_WORKOUT)
+        spec.actions.forEach { action ->
+            builder.addAction(
+                0, // A text-only action; the icon is ignored from Android 7 on.
+                getString(action.labelRes()),
+                commandPendingIntent(action),
+            )
+        }
+        return builder.build()
+    }
+
+    /** Starting text, before the first snapshot arrives, comes from the caller. */
+    private fun buildNotification(text: String): Notification =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setOngoing(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_WORKOUT)
             .build()
+
+    private fun notificationText(spec: RunNotificationSpec): String = when (spec.state) {
+        RunSessionState.COUNTDOWN ->
+            getString(R.string.track_notification_countdown, spec.countdownSecondsRemaining)
+        RunSessionState.PAUSED -> getString(R.string.track_notification_paused)
+        else -> getString(
+            R.string.track_notification_running,
+            Units.formatMiles(spec.distanceMeters),
+            Units.formatDuration(spec.movingDurationSec),
+        )
+    }
+
+    /**
+     * Distinct request codes per action, or `FLAG_UPDATE_CURRENT` would have
+     * every button reuse — and so re-target — the first one created.
+     */
+    private fun commandPendingIntent(action: RunNotificationAction): PendingIntent =
+        PendingIntent.getForegroundService(
+            this,
+            REQUEST_CODE_BASE + action.ordinal,
+            commandIntent(this, action.serviceAction()),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+    private fun RunNotificationAction.serviceAction(): String = when (this) {
+        RunNotificationAction.SKIP_COUNTDOWN -> ACTION_SKIP_COUNTDOWN
+        RunNotificationAction.CANCEL -> ACTION_CANCEL
+        RunNotificationAction.PAUSE -> ACTION_PAUSE
+        RunNotificationAction.RESUME -> ACTION_RESUME
+        RunNotificationAction.FINISH -> ACTION_FINISH
+    }
+
+    private fun RunNotificationAction.labelRes(): Int = when (this) {
+        RunNotificationAction.SKIP_COUNTDOWN -> R.string.track_skip_countdown
+        RunNotificationAction.CANCEL -> R.string.track_cancel
+        RunNotificationAction.PAUSE -> R.string.track_pause
+        RunNotificationAction.RESUME -> R.string.track_resume
+        RunNotificationAction.FINISH -> R.string.track_finish
     }
 
     private fun createNotificationChannel() {
@@ -190,6 +243,8 @@ class LocationTrackingService : LifecycleService() {
         private const val CHANNEL_ID = "run_tracking"
         private const val NOTIFICATION_ID = 1
         private const val TICK_MILLIS = 1_000L
+        /** Keeps action `PendingIntent`s clear of the content intent's code 0. */
+        private const val REQUEST_CODE_BASE = 100
         /** A generous ceiling; the lock is released as soon as the run ends. */
         private const val MAX_RUN_MILLIS = 6 * 60 * 60 * 1000L
 

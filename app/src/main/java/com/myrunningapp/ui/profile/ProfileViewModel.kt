@@ -2,6 +2,8 @@ package com.myrunningapp.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.myrunningapp.data.export.ExportDocument
+import com.myrunningapp.data.export.RunExporter
 import com.myrunningapp.data.prefs.PreferencesRepository
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.domain.Units
@@ -11,9 +13,11 @@ import com.myrunningapp.domain.model.Sex
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -23,6 +27,7 @@ import javax.inject.Inject
 class ProfileViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val preferencesRepository: PreferencesRepository,
+    private val exporter: RunExporter,
 ) : ViewModel() {
 
     val uiState: StateFlow<ProfileUiState> = combine(
@@ -76,6 +81,24 @@ class ProfileViewModel @Inject constructor(
             )
             _events.tryEmit(ProfileEvent.Saved)
         }
+    }
+
+    private val _pendingExport = MutableStateFlow<ExportDocument?>(null)
+    /** The backup waiting for the user to pick a destination. */
+    val pendingExport: StateFlow<ExportDocument?> = _pendingExport.asStateFlow()
+
+    /**
+     * Builds the whole-database backup. Reading every run's track takes a moment
+     * on a long history, which is why it happens on a tap rather than eagerly.
+     * A history with no runs still exports — a file saying so is a truthful
+     * backup, and beats a button that appears to do nothing.
+     */
+    fun exportEverything() {
+        viewModelScope.launch { _pendingExport.value = exporter.exportEverything() }
+    }
+
+    fun onExportHandled() {
+        _pendingExport.value = null
     }
 
     fun setCountdownLength(length: CountdownLength) {

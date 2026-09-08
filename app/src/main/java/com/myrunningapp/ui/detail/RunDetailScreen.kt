@@ -11,10 +11,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +41,10 @@ import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.model.Split
+import com.myrunningapp.data.export.RunExporter
+import com.myrunningapp.ui.export.DocumentExportEffect
 import com.myrunningapp.ui.map.RouteMap
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -46,46 +54,77 @@ import java.time.format.FormatStyle
 fun RunDetailScreen(onBack: () -> Unit, viewModel: RunDetailViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val deleted by viewModel.deleted.collectAsStateWithLifecycle()
+    val pendingExport by viewModel.pendingExport.collectAsStateWithLifecycle()
     var confirmingDelete by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val failedMessage = stringResource(R.string.export_failed)
+    // Read while the document is still pending: the callback fires after the
+    // ViewModel has cleared it, and the message names the file that was written.
+    val savedMessage = stringResource(R.string.export_saved, pendingExport?.fileName.orEmpty())
 
     // Deleting leaves nothing to show, so the screen sees itself out.
     LaunchedEffect(deleted) { if (deleted) onBack() }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        TextButton(onClick = onBack) { Text(stringResource(R.string.route_back)) }
+    DocumentExportEffect(
+        document = pendingExport,
+        mimeType = RunExporter.GPX_MIME,
+        onCancelled = viewModel::onExportHandled,
+        onFinished = { saved ->
+            scope.launch {
+                snackbarHostState.showSnackbar(if (saved) savedMessage else failedMessage)
+            }
+            viewModel.onExportHandled()
+        },
+    )
 
-        when {
-            state.loading -> CircularProgressIndicator()
-            state.run == null -> Text(stringResource(R.string.route_not_found))
-            else -> {
-                val run = checkNotNull(state.run)
-                Text(
-                    remember {
-                        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.FULL, FormatStyle.SHORT)
-                            .withZone(ZoneId.systemDefault())
-                    }.format(run.startedAt),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                // A fixed height, not weight(): this column scrolls, and a map
-                // with no intrinsic height would otherwise collapse to nothing.
-                RouteMap(
-                    points = state.points,
-                    modifier = Modifier.fillMaxWidth().height(280.dp),
-                )
-                StatBlock(run)
-                ActivityTypePicker(
-                    selected = run.activityType,
-                    onSelect = viewModel::setActivityType,
-                )
-                SplitsTable(state.splits)
-                TextButton(onClick = { confirmingDelete = true }) {
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            TextButton(onClick = onBack) { Text(stringResource(R.string.route_back)) }
+
+            when {
+                state.loading -> CircularProgressIndicator()
+                state.run == null -> Text(stringResource(R.string.route_not_found))
+                else -> {
+                    val run = checkNotNull(state.run)
                     Text(
-                        stringResource(R.string.detail_delete),
-                        color = MaterialTheme.colorScheme.error,
+                        remember {
+                            DateTimeFormatter
+                                .ofLocalizedDateTime(FormatStyle.FULL, FormatStyle.SHORT)
+                                .withZone(ZoneId.systemDefault())
+                        }.format(run.startedAt),
+                        style = MaterialTheme.typography.titleLarge,
                     )
+                    // A fixed height, not weight(): this column scrolls, and a map
+                    // with no intrinsic height would otherwise collapse to nothing.
+                    RouteMap(
+                        points = state.points,
+                        modifier = Modifier.fillMaxWidth().height(280.dp),
+                        colorByPace = state.colorRouteByPace,
+                    )
+                    StatBlock(run)
+                    ActivityTypePicker(
+                        selected = run.activityType,
+                        onSelect = viewModel::setActivityType,
+                    )
+                    SplitsTable(state.splits)
+                    OutlinedButton(
+                        onClick = viewModel::exportRun,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.detail_export)) }
+                    TextButton(onClick = { confirmingDelete = true }) {
+                        Text(
+                            stringResource(R.string.detail_delete),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
         }

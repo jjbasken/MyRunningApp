@@ -24,6 +24,8 @@ class PreferencesRepository @Inject constructor(
             voiceAnnouncementsEnabled = prefs[Keys.VOICE] ?: true,
             keepScreenOnDuringRun = prefs[Keys.KEEP_SCREEN_ON] ?: true,
             colorRouteByPace = prefs[Keys.PACE_COLOR] ?: false,
+            backgroundLocationAsked = prefs[Keys.BACKGROUND_ASKED] ?: false,
+            backgroundWarningDismissed = prefs[Keys.BACKGROUND_WARNING_DISMISSED] ?: false,
         )
     }
 
@@ -43,10 +45,20 @@ class PreferencesRepository @Inject constructor(
         dataStore.edit { it[Keys.PACE_COLOR] = enabled }
     }
 
+    suspend fun setBackgroundLocationAsked(asked: Boolean) {
+        dataStore.edit { it[Keys.BACKGROUND_ASKED] = asked }
+    }
+
+    suspend fun setBackgroundWarningDismissed(dismissed: Boolean) {
+        dataStore.edit { it[Keys.BACKGROUND_WARNING_DISMISSED] = dismissed }
+    }
+
     private object Keys {
         val COUNTDOWN_SECONDS = intPreferencesKey("countdown_seconds")
         val VOICE = booleanPreferencesKey("voice_announcements")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val PACE_COLOR = booleanPreferencesKey("pace_color")
+        val BACKGROUND_ASKED = booleanPreferencesKey("background_location_asked")
+        val BACKGROUND_WARNING_DISMISSED = booleanPreferencesKey("background_warning_dismissed")
     }
 }
