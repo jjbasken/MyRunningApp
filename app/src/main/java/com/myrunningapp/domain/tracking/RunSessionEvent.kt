@@ -16,6 +16,14 @@ data class MileSplit(
     val distanceMeters: Double,
     val durationSec: Long,
     val paceSecPerMile: Double,
+    /**
+     * Moving time from the start of the run to the end of this split.
+     *
+     * Carried alongside the split's own duration because the mile announcement
+     * quotes both, and summing the rounded per-split durations would let the
+     * spoken total drift a second or two away from the clock on screen.
+     */
+    val cumulativeMovingSec: Long,
 )
 
 /**

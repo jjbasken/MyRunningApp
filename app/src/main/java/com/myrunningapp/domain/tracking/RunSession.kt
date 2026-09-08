@@ -233,6 +233,7 @@ class RunSession(
                 distanceMeters = Units.METERS_PER_MILE,
                 durationSec = millisToSeconds(durationMillis),
                 paceSecPerMile = durationMillis / 1000.0,
+                cumulativeMovingSec = millisToSeconds(crossingMillis),
             )
             splits += split
             events += RunSessionEvent.MileCompleted(split)
@@ -247,13 +248,15 @@ class RunSession(
         // Below a metre there is nothing worth showing in the splits table.
         if (remainder < 1.0) return emptyList()
 
-        val durationMillis = movingMillis() - movingMillisAtLastMarker
+        val totalMovingMillis = movingMillis()
+        val durationMillis = totalMovingMillis - movingMillisAtLastMarker
         val durationSec = millisToSeconds(durationMillis)
         val split = MileSplit(
             splitNumber = splits.size + 1,
             distanceMeters = remainder,
             durationSec = durationSec,
             paceSecPerMile = Units.paceSecPerMile(remainder, durationSec),
+            cumulativeMovingSec = millisToSeconds(totalMovingMillis),
         )
         splits += split
         return listOf(RunSessionEvent.FinalSplitCompleted(split))
