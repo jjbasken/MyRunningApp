@@ -254,7 +254,17 @@ Each milestone builds, runs, and is testable on its own.
    The countdown state machine and its setting already existed from milestones 1
    and 2; this milestone gave them their voice ("3, 2, 1, go").
 5. **History & detail** — run list with totals header; detail screen with splits
-   table; delete; calorie calculation wired in.
+   table; delete; calorie calculation wired in. *Built with the summing and the
+   estimating kept pure:* `HistoryStats` rolls a run list into week and all-time
+   totals over an injected clock and zone, so "this week" is tested without
+   waiting for one, and the week's first day comes from the user's locale rather
+   than being hard-coded. `CalorieCalculator` stacks the ACSM metabolic equations
+   (speed to oxygen uptake, grade ignored — GPS altitude is too noisy to grade a
+   route with) on Mifflin-St Jeor for the resting term, which is the only thing
+   height, age and sex do here. Estimates run against the `weightKgAtRun`
+   snapshot, so a profile edit never rewrites history; correcting a run's
+   activity type does re-estimate it, since the label and the number sit next to
+   each other and must agree.
 6. **Polish** — permission rationale flow; notification with live stats +
    controls; export to GPX/JSON; pace-colored polyline; fixes from field testing.
 
