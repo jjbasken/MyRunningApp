@@ -44,6 +44,10 @@ class RunTracker @Inject constructor(
     /** The run just completed, so the UI can offer to open it. */
     val lastFinishedRunId: StateFlow<Long?> = _lastFinishedRunId.asStateFlow()
 
+    private val _route = MutableStateFlow<List<TrackedPoint>>(emptyList())
+    /** Accepted points, including those not yet flushed to Room. */
+    val route: StateFlow<List<TrackedPoint>> = _route.asStateFlow()
+
     private var session: RunSession? = null
     private var runId: Long? = null
 
@@ -66,6 +70,7 @@ class RunTracker @Inject constructor(
         session = fresh
         runId = null
         buffer.clear()
+        _route.value = emptyList()
         lastFlushAt = null
         _lastFinishedRunId.value = null
         this.weightKg = weightKg
@@ -139,7 +144,10 @@ class RunTracker @Inject constructor(
         events.forEach { event ->
             when (event) {
                 is RunSessionEvent.TrackingStarted -> openRunRow(live)
-                is RunSessionEvent.PointRecorded -> buffer += event.point
+                is RunSessionEvent.PointRecorded -> {
+                    buffer += event.point
+                    _route.value = _route.value + event.point
+                }
                 else -> Unit
             }
         }
@@ -191,6 +199,7 @@ class RunTracker @Inject constructor(
 
     private fun clear() {
         session = null
+        _route.value = emptyList()
         runId = null
         buffer.clear()
         lastFlushAt = null

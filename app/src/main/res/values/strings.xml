@@ -52,4 +52,16 @@
     <string name="track_notification_paused">Paused</string>
     <string name="track_notification_running">%1$s · %2$s</string>
     <string name="placeholder_history">Run history — coming in milestone 5</string>
+    <string name="view_saved_route">View saved route</string>
+    <string name="map_mile">Mile %1$d</string>
+    <string name="map_current_position">Current position</string>
+    <string name="map_finish">Finish</string>
+    <string name="map_unlock">Unlock camera</string>
+    <string name="map_follow">Follow position</string>
+    <string name="map_waiting">Your route appears here when GPS points are received.</string>
+    <string name="map_empty">No GPS points recorded for this activity.</string>
+    <string name="route_back">Back</string>
+    <string name="route_not_found">This activity is no longer available.</string>
+    <string name="saved_routes">Saved routes</string>
+    <string name="no_saved_routes">Your recorded routes will appear here.</string>
 </resources>

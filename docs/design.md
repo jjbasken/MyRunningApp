@@ -234,7 +234,10 @@ Each milestone builds, runs, and is testable on its own.
    machine, distance/pace math, persist `Run` + `RunPoint`. Verified with the
    replay harness. Crude run screen: Start / Pause / Stop + text stats.
 3. **Map** — osmdroid live route on the run screen; full route on the run detail
-   screen.
+   screen. Implemented with pause-separated polylines, automatic camera unlock
+   on pan, follow toggle, fitted saved routes, and interpolated full-mile pins.
+   A basic History route browser and post-finish link make saved maps accessible;
+   history totals and management remain in milestone 5.
 4. **Announcements** — `TextToSpeech` engine; mile splits computed, persisted, and
    spoken; audio-focus ducking; the Start-now / Start-in-30s countdown + its
    setting.

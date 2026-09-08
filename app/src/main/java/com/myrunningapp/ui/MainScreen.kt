@@ -65,7 +65,9 @@ fun MainScreen() {
             startDestination = Routes.TRACK,
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable(Routes.TRACK) { TrackScreen() }
+            composable(Routes.TRACK) {
+                TrackScreen(onRunClick = { navController.navigate(Routes.runDetail(it)) })
+            }
             composable(Routes.HISTORY) {
                 HistoryScreen(onRunClick = { runId -> navController.navigate(Routes.runDetail(runId)) })
             }
