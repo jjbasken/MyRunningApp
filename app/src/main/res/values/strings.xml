@@ -26,6 +26,30 @@
     <string name="pref_keep_screen_on">Keep screen on during a run</string>
     <string name="pref_pace_color">Colour route by pace</string>
 
-    <string name="placeholder_track">Track a run — coming in milestone 2</string>
+    <!-- Track screen -->
+    <string name="activity_run">Run</string>
+    <string name="activity_walk">Walk</string>
+    <string name="track_start_now">Start now</string>
+    <string name="track_start_in">Start in %1$d s</string>
+    <string name="track_skip_countdown">Start now</string>
+    <string name="track_cancel">Cancel</string>
+    <string name="track_pause">Pause</string>
+    <string name="track_resume">Resume</string>
+    <string name="track_finish">Finish</string>
+    <string name="track_paused">Paused</string>
+    <string name="track_moving_time">Moving time</string>
+    <string name="track_elapsed_time">Elapsed</string>
+    <string name="track_avg_pace">Average pace</string>
+    <string name="track_splits">Miles completed</string>
+    <string name="track_saved">Run saved to your history</string>
+    <string name="track_countdown_hint">Getting a GPS fix — distance starts at zero</string>
+
+    <!-- Tracking notification -->
+    <string name="track_notification_channel">Run tracking</string>
+    <string name="track_notification_channel_description">Shows distance and time while a run is in progress</string>
+    <string name="track_notification_starting">Starting…</string>
+    <string name="track_notification_countdown">Starting in %1$d s</string>
+    <string name="track_notification_paused">Paused</string>
+    <string name="track_notification_running">%1$s · %2$s</string>
     <string name="placeholder_history">Run history — coming in milestone 5</string>
 </resources>

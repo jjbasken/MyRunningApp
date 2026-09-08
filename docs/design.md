@@ -107,6 +107,14 @@ does not lose the whole track.
   app re-attaches to the in-progress session.
 - Holds a CPU wakelock while tracking so points keep coming with the screen off.
 
+> *Built in milestone 2 as two pieces rather than one:* `RunTracker` is an
+> `@Singleton` owning the `RunSession`, the writes to Room and the live
+> `StateFlow`; the service keeps the process alive, subscribes to GPS and mirrors
+> the state into the notification. The behaviour above is unchanged — a
+> process-wide singleton outlives the service just as the service outlives the UI —
+> but the run screen observes the tracker directly rather than binding to a
+> service, and the tracker's timing rules are unit-tested against a fake recorder.
+
 **State machine:** `IDLE → COUNTDOWN → TRACKING ⇄ PAUSED → FINISHED`,
 plus `COUNTDOWN → IDLE` on cancel.
 
