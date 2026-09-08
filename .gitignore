@@ -1,0 +1,28 @@
+# Built output
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+/build
+/app/build
+/captures
+/out
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+.kotlin/
+
+# Local configuration (SDK path, signing keys)
+local.properties
+*.keystore
+*.jks
+
+# OS
+.DS_Store
+Thumbs.db

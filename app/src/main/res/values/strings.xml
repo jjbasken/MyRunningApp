@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyRunningApp</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_track">Track</string>
+    <string name="nav_history">History</string>
+    <string name="nav_profile">Profile</string>
+
+    <!-- Profile screen -->
+    <string name="profile_title">Profile</string>
+    <string name="profile_weight">Weight (lb)</string>
+    <string name="profile_height">Height (in)</string>
+    <string name="profile_age">Age</string>
+    <string name="profile_sex">Sex</string>
+    <string name="profile_sex_male">Male</string>
+    <string name="profile_sex_female">Female</string>
+    <string name="profile_save">Save</string>
+    <string name="profile_saved">Profile saved</string>
+    <string name="profile_prefs">Preferences</string>
+    <string name="pref_countdown">Countdown before start</string>
+    <string name="pref_countdown_off">Off</string>
+    <string name="pref_countdown_10">10 seconds</string>
+    <string name="pref_countdown_30">30 seconds</string>
+    <string name="pref_voice">Voice announcements</string>
+    <string name="pref_keep_screen_on">Keep screen on during a run</string>
+    <string name="pref_pace_color">Colour route by pace</string>
+
+    <string name="placeholder_track">Track a run — coming in milestone 2</string>
+    <string name="placeholder_history">Run history — coming in milestone 5</string>
+</resources>
