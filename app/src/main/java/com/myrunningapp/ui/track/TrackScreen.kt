@@ -6,6 +6,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.remember
+import com.myrunningapp.ui.map.RouteMap
+import com.myrunningapp.ui.map.RouteCoordinate
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,12 +47,10 @@ import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
 import com.myrunningapp.domain.tracking.RunSnapshot
 
-/**
- * The live run screen. Milestone 2 keeps it deliberately plain — numbers and
- * buttons; the map arrives in milestone 3 and the spoken splits in milestone 4.
- */
 @Composable
-fun TrackScreen(viewModel: TrackViewModel = hiltViewModel()) {
+fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hiltViewModel()) {
+    val route by viewModel.route.collectAsStateWithLifecycle()
+    val mapPoints = remember(route) { route.map { RouteCoordinate(it.fix.latitude, it.fix.longitude, it.segmentIndex) } }
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val startRequest by viewModel.startRequest.collectAsStateWithLifecycle()
@@ -91,18 +94,28 @@ fun TrackScreen(viewModel: TrackViewModel = hiltViewModel()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        StatsBlock(state.snapshot)
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            RouteMap(
+                points = mapPoints,
+                currentPosition = state.snapshot.lastFix?.let { RouteCoordinate(it.latitude, it.longitude, state.snapshot.segmentIndex) },
+                live = true,
+                modifier = Modifier.fillMaxWidth().height(280.dp),
+            )
+            StatsBlock(state.snapshot)
+        }
 
         when (state.snapshot.state) {
             RunSessionState.IDLE, RunSessionState.FINISHED -> {
                 if (lastFinishedRunId != null) {
-                    Text(
-                        text = stringResource(R.string.track_saved),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    OutlinedButton(onClick = { lastFinishedRunId?.let(onRunClick) }) {
+                        Text(stringResource(R.string.view_saved_route))
+                    }
                 }
                 IdleControls(
                     selected = state.selectedActivityType,

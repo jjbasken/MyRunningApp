@@ -41,6 +41,8 @@ class TrackViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
 ) : ViewModel() {
 
+    val route = tracker.route
+
     private val selectedActivityType = MutableStateFlow(ActivityType.RUN)
 
     val uiState: StateFlow<TrackUiState> = combine(

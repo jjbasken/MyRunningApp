@@ -267,6 +267,37 @@ class RunTrackerTest {
         assertEquals(99L, tracker.lastFinishedRunId.value)
     }
 
+    @Test
+    fun `live route includes unflushed points and survives a flush`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 3)
+        assertEquals(4, tracker.route.value.size)
+        assertTrue(recorder.points.isEmpty())
+        val initial = tracker.route.value
+        at(10)
+        tracker.tick()
+        assertEquals(initial, tracker.route.value)
+        assertEquals(initial, recorder.points)
+        tracker.finish()
+        assertTrue(tracker.route.value.isEmpty())
+    }
+
+    @Test
+    fun `live route excludes paused and rejected fixes and retains segment boundaries`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(seconds = 2)
+        tracker.pause()
+        at(10)
+        tracker.onLocation(fix(10, 2000.0))
+        assertEquals(3, tracker.route.value.size)
+        tracker.resume()
+        at(11)
+        tracker.onLocation(fix(11, 2000.0))
+        at(12)
+        tracker.onLocation(fix(12, 2003.0).copy(accuracyMeters = 100f))
+        assertEquals(listOf(0, 0, 0, 1), tracker.route.value.map { it.segmentIndex })
+    }
+
     // --- live state ----------------------------------------------------------
 
     @Test
