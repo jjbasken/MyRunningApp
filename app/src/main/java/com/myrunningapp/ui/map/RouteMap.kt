@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
@@ -146,7 +147,8 @@ fun RouteMap(
             map.controller.setCenter(currentPosition.geoPoint())
         }
     }
-    Box(modifier) {
+    // Android map tiles must stay inside the space allocated by Compose.
+    Box(modifier.clipToBounds()) {
         AndroidView(factory = { map }, modifier = Modifier.matchParentSize())
         if (live) {
             Surface(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp), shape = MaterialTheme.shapes.small) {
