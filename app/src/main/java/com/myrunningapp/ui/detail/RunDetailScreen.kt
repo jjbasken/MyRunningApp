@@ -109,6 +109,9 @@ fun RunDetailScreen(onBack: () -> Unit, viewModel: RunDetailViewModel = hiltView
                         modifier = Modifier.fillMaxWidth().height(280.dp),
                         colorByPace = state.colorRouteByPace,
                     )
+                    if (run.wasRecovered) {
+                        Text(stringResource(R.string.run_recovered_detail))
+                    }
                     StatBlock(run)
                     ActivityTypePicker(
                         selected = run.activityType,

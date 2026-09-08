@@ -4,6 +4,7 @@ import com.myrunningapp.domain.announce.Announcement
 import com.myrunningapp.domain.announce.Announcer
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
+import com.myrunningapp.domain.tracking.MonotonicClock
 import com.myrunningapp.domain.tracking.GpsFix
 import com.myrunningapp.domain.tracking.MileSplit
 import com.myrunningapp.domain.tracking.RunSnapshot
@@ -57,6 +58,17 @@ class RunTrackerTest {
             return nextId
         }
 
+        val checkpoints = mutableListOf<RunSnapshot>()
+        val checkpointTimes = mutableListOf<Instant>()
+
+        override suspend fun checkpoint(runId: Long, points: List<TrackedPoint>, snapshot: RunSnapshot, at: Instant) {
+            recordPoints(runId, points)
+            splits.clear()
+            splits.addAll(snapshot.completedSplits)
+            checkpoints += snapshot
+            checkpointTimes += at
+        }
+
         override suspend fun recordPoints(runId: Long, points: List<TrackedPoint>) {
             if (points.isNotEmpty()) pointBatches += points
         }
@@ -93,9 +105,13 @@ class RunTrackerTest {
     private val clock = TestClock(t0)
     private val recorder = FakeRecorder()
     private val announcer = FakeAnnouncer()
-    private val tracker = RunTracker(recorder, announcer, clock)
+    private var elapsedMillis = t0.toEpochMilli()
+    private val tracker = RunTracker(recorder, announcer, clock, MonotonicClock { elapsedMillis })
 
-    private fun at(seconds: Long) { clock.now = t0.plusSeconds(seconds) }
+    private fun at(seconds: Long) {
+        clock.now = t0.plusSeconds(seconds)
+        elapsedMillis = t0.toEpochMilli() + seconds * 1000
+    }
 
     private fun fix(seconds: Long, metersNorth: Double) = GpsFix(
         timestamp = t0.plusSeconds(seconds),
@@ -112,6 +128,60 @@ class RunTrackerTest {
             at(s)
             tracker.onLocation(fix(s, (s - fromSecond) * 3.0))
         }
+    }
+
+    @Test
+    fun `timer checkpoints an activity even without GPS`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        at(10)
+        tracker.tick()
+        assertEquals(10L, recorder.checkpoints.last().movingDurationSec)
+        assertEquals(0.0, recorder.checkpoints.last().distanceMeters, 0.0)
+        at(15)
+        tracker.pause()
+        assertEquals(15L, recorder.checkpoints.last().movingDurationSec)
+        at(25)
+        tracker.tick()
+        assertEquals(15L, recorder.checkpoints.last().movingDurationSec)
+        assertEquals(25L, recorder.checkpoints.last().elapsedDurationSec)
+    }
+
+    @Test
+    fun `checkpoint contains exactly the distance represented by flushed points`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runFor(10)
+        assertEquals(11, recorder.points.size)
+        assertEquals(30.0, recorder.checkpoints.last().distanceMeters, 0.1)
+    }
+
+    @Test
+    fun `late countdown cancel cannot abandon a tracking run`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 3, weightKg = 70.0)
+        at(3)
+        tracker.tick()
+        tracker.cancel()
+        assertEquals(RunSessionState.TRACKING, tracker.snapshot.value.state)
+    }
+
+    @Test
+    fun `clock corrections cannot delay or accelerate checkpoints without GPS`() = runTest {
+        tracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        elapsedMillis += 9000
+        clock.now = t0.plusSeconds(3600)
+        tracker.tick()
+        assertTrue(recorder.checkpoints.isEmpty())
+        elapsedMillis += 1000
+        clock.now = t0.minusSeconds(3600)
+        tracker.tick()
+        assertEquals(1, recorder.checkpoints.size)
+        assertEquals(10L, recorder.checkpoints.last().movingDurationSec)
+        assertEquals(t0.plusSeconds(10), recorder.checkpointTimes.last())
+        elapsedMillis += 10_000
+        tracker.tick()
+        assertEquals(2, recorder.checkpoints.size)
+        assertEquals(20L, recorder.checkpoints.last().movingDurationSec)
+        tracker.finish()
+        assertEquals(20L, recorder.finished!!.elapsedDurationSec)
     }
 
     // --- the run row ---------------------------------------------------------

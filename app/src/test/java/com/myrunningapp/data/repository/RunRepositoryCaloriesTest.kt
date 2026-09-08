@@ -101,13 +101,29 @@ class RunRepositoryCaloriesTest {
         assertEquals(0, runDao.rows.size)
     }
 
+    @Test
+    fun `active run cannot be deleted or edited through repository`() = runTest {
+        val repository = repository()
+        val id = repository.startRun(ActivityType.RUN, startedAt, 70.0)
+        repository.deleteRun(id)
+        repository.updateActivityType(id, ActivityType.WALK)
+        repository.updateRun(runDao.getById(id)!!.toDomain().copy(distanceMeters = 999.0))
+        val row = runDao.getById(id)!!
+        assertTrue(row.isInProgress)
+        assertEquals(ActivityType.RUN, row.activityType)
+        assertEquals(0.0, row.distanceMeters, 0.0)
+        repository.finishRun(id, snapshot(5000.0, 1500), startedAt.plusSeconds(1500))
+        repository.deleteRun(id)
+        assertEquals(null, runDao.getById(id))
+    }
+
     // --- fakes ---------------------------------------------------------------
 
     private class FakeRunDao : RunDao {
         val rows = mutableMapOf<Long, RunEntity>()
         private var nextId = 1L
 
-        override fun observeAll(): Flow<List<RunEntity>> = flowOf(rows.values.toList())
+        override fun observeAll(): Flow<List<RunEntity>> = flowOf(rows.values.filter { !it.isInProgress })
         override fun observeById(runId: Long): Flow<RunEntity?> = flowOf(rows[runId])
         override suspend fun getById(runId: Long): RunEntity? = rows[runId]
         override suspend fun insert(run: RunEntity): Long {
@@ -117,7 +133,12 @@ class RunRepositoryCaloriesTest {
         }
         override suspend fun update(run: RunEntity) { rows[run.id] = run }
         override suspend fun delete(run: RunEntity) { rows.remove(run.id) }
-        override suspend fun deleteById(runId: Long) { rows.remove(runId) }
+        override suspend fun deleteById(runId: Long) {
+            if (rows[runId]?.isInProgress == false) rows.remove(runId)
+        }
+        override suspend fun insertCheckpointPoints(points: List<RunPointEntity>) = Unit
+        override suspend fun insertCheckpointSplits(splits: List<SplitEntity>) = Unit
+        override suspend fun clearCheckpointSplits(runId: Long) = Unit
     }
 
     private class FakeRunPointDao : RunPointDao {

@@ -7,7 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
 import com.myrunningapp.data.export.ExportDocument
 
@@ -32,7 +36,8 @@ fun DocumentExportEffect(
     onCancelled: () -> Unit,
     onFinished: (Boolean) -> Unit,
 ) {
-    val context = LocalContext.current
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
     // The callback fires long after this composition; read the document then,
     // not now, or a re-composition would write a stale file.
     val pending by rememberUpdatedState(document)
@@ -46,7 +51,7 @@ fun DocumentExportEffect(
         when {
             uri == null -> cancelled()
             content == null -> cancelled()
-            else -> finished(context.write(uri, content.content))
+            else -> scope.launch { finished(context.write(uri, content.content)) }
         }
     }
 
@@ -60,9 +65,11 @@ fun DocumentExportEffect(
  *   volume, or a provider that went away — and silently losing an export the
  *   user asked for is worse than saying so.
  */
-private fun Context.write(uri: Uri, content: String): Boolean = runCatching {
-    contentResolver.openOutputStream(uri)?.use { stream ->
-        stream.write(content.toByteArray())
-    } ?: return false
-    true
-}.getOrDefault(false)
+internal suspend fun Context.write(uri: Uri, content: String): Boolean = withContext(Dispatchers.IO) {
+    runCatching {
+        contentResolver.openOutputStream(uri)?.use { stream ->
+            stream.write(content.toByteArray())
+        } ?: return@runCatching false
+        true
+    }.getOrDefault(false)
+}

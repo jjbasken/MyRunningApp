@@ -22,6 +22,8 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS)
             .build()
 
     @Provides

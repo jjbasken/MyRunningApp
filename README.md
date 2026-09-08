@@ -65,6 +65,31 @@ be checked in seconds rather than on a run.
    notification controls, GPX/JSON export, and the pace-coloured route. Fixes
    from field testing are still outstanding; they need a real run first.
 
+## Interrupted activities and privacy
+
+Active activities are excluded from History and protected against deletion or
+editing while recording. The tracker saves route points, summary values and
+splits together every ten seconds, at mile boundaries, and on pause/finish.
+If the process is killed, reopening the app automatically saves the last
+checkpoint as a **Recovered activity** in History. Its end time is the checkpoint
+time, not the time the app was reopened. The uncheckpointed tail (normally less
+than ten seconds) can be lost; recording does not automatically resume.
+
+Database version 2 preserves existing saved activities during upgrade. Recovery
+applies to activities recorded with this version; older interrupted activities
+have no timing checkpoints to recover.
+
+Automatic cloud backup and device transfer are disabled and explicitly exclude
+app data. GPX and JSON exports remain available when requested by the user.
+Export preparation and destination writes run off the UI thread.
+
+Tracking durations, countdowns, GPS age/speed checks and checkpoint scheduling
+use Android time since boot, including sleep. Clock corrections do not affect
+pace or split times. Route timestamps stay anchored to the activity start date
+so saved routes and exports remain ordered. Fixes taken before Start or Resume
+are rejected even if they arrive in a recent batch. The manifest declares speech
+engine visibility for voice announcements on Android 11 and later.
+
 ## Checking the maps (Milestone 3)
 
 - Start an activity outdoors with location permission. Accepted GPS points should
@@ -174,8 +199,10 @@ rather than firing a request Android refuses without showing you anything.
   go back to normal the moment the run ends.
 
 Validation on the Linux ARM64 development host: the debug APK builds using the
-host's existing x86 resource-compiler compatibility wrapper. 177 of 180 JVM tests
-pass, including the 52 new permission-gate, notification-spec, GPX, backup-JSON,
-filename and pace-ramp tests; the three existing Room tests require Robolectric's
-native runtime, which does not support Linux ARM64. Run the full suite and the
-device checklists on a supported Android development machine.
+host's existing x86 resource-compiler compatibility wrapper. 191 of 198 JVM tests
+pass, including tracker checkpoint/protection and asynchronous export coverage.
+Seven Room tests (including recovery, rollback and migration coverage) cannot
+start because Robolectric's native libraries are unavailable on Linux ARM64.
+Separate SQLite checks validate migration schema equivalence, preservation of
+saved summaries, deletion protection and the recovery update. Run the full Room
+suite and device checklists on a supported Android development machine.

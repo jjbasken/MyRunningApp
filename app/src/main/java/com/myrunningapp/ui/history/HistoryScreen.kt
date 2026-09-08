@@ -190,6 +190,9 @@ private fun RunRow(run: Run, date: String, onClick: () -> Unit, onLongClick: () 
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(date, style = MaterialTheme.typography.titleMedium)
+                if (run.wasRecovered) {
+                    Text(stringResource(R.string.run_recovered))
+                }
                 Text(
                     "${Units.formatMiles(run.distanceMeters)} · " +
                         Units.formatDuration(run.movingDurationSec),

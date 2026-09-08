@@ -3,7 +3,6 @@ package com.myrunningapp.domain.tracking
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
-import java.time.Duration
 import java.time.Instant
 import kotlin.math.ceil
 
@@ -17,7 +16,8 @@ import kotlin.math.ceil
  * ```
  *
  * Deliberately free of Android, coroutines and clocks: every method is told what
- * time it is, so an entire run — including its mile splits — replays in a unit
+ * wall time and milliseconds since boot (including sleep). Defaults support deterministic
+ * timestamped replays; Android callers always supply monotonic time. Thus an entire run — including its mile splits — replays in a unit
  * test in microseconds. `LocationTrackingService` owns an instance, feeds it
  * fixes and ticks, and turns the returned [RunSessionEvent]s into database writes
  * and announcements.
@@ -31,18 +31,28 @@ class RunSession(
 ) {
 
     private var state: RunSessionState = RunSessionState.IDLE
-    private var currentTime: Instant? = null
+    private var currentElapsedMillis: Long? = null
+    private var clockOriginMillis: Long = 0
+    private var clockOriginWall: Instant = Instant.EPOCH
+    private var startedElapsedMillis: Long? = null
 
-    private var countdownEndsAt: Instant? = null
+    /** A stable wall-time timeline anchored once, so exports stay ordered after clock changes. */
+    val timestamp: Instant?
+        get() = currentElapsedMillis?.let(::wallTimeAt)
+
+    private fun wallTimeAt(elapsedMillis: Long): Instant =
+        clockOriginWall.plusMillis(elapsedMillis - clockOriginMillis)
+
+    private var countdownEndsMillis: Long? = null
     private var countdownRemaining: Int = 0
 
     private var startedAt: Instant? = null
-    private var endedAt: Instant? = null
+    private var endedElapsedMillis: Long? = null
 
     /** Moving time from tracking windows that have already closed. */
     private var movingMillisBanked: Long = 0
     /** When the current tracking window opened, or null if not tracking. */
-    private var trackingSince: Instant? = null
+    private var trackingSinceMillis: Long? = null
 
     private var distanceMeters: Double = 0.0
     private var segmentIndex: Int = 0
@@ -82,32 +92,34 @@ class RunSession(
     // --- commands ------------------------------------------------------------
 
     /** Begins the countdown, or tracking straight away when the countdown is off. */
-    fun start(now: Instant): List<RunSessionEvent> {
+    fun start(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()): List<RunSessionEvent> {
         if (state != RunSessionState.IDLE) return emptyList()
-        currentTime = now
+        clockOriginMillis = elapsedRealtimeMillis
+        clockOriginWall = now
+        currentElapsedMillis = elapsedRealtimeMillis
         return if (countdownSeconds > 0) {
             state = RunSessionState.COUNTDOWN
-            countdownEndsAt = now.plusSeconds(countdownSeconds.toLong())
+            countdownEndsMillis = elapsedRealtimeMillis + countdownSeconds * 1000L
             countdownRemaining = countdownSeconds
             listOf(RunSessionEvent.CountdownTick(countdownSeconds))
         } else {
-            listOf(beginTracking(now))
+            listOf(beginTracking(elapsedRealtimeMillis))
         }
     }
 
     /** "Start now" during a countdown. */
-    fun skipCountdown(now: Instant): List<RunSessionEvent> {
+    fun skipCountdown(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()): List<RunSessionEvent> {
         if (state != RunSessionState.COUNTDOWN) return emptyList()
-        currentTime = now
-        return listOf(beginTracking(now))
+        currentElapsedMillis = elapsedRealtimeMillis
+        return listOf(beginTracking(elapsedRealtimeMillis))
     }
 
     /** Abandons a countdown before it reaches zero; nothing was recorded. */
-    fun cancel(now: Instant) {
+    fun cancel(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()) {
         if (state != RunSessionState.COUNTDOWN) return
-        currentTime = now
+        currentElapsedMillis = elapsedRealtimeMillis
         state = RunSessionState.IDLE
-        countdownEndsAt = null
+        countdownEndsMillis = null
         countdownRemaining = 0
         anchorFix = null
         lastFix = null
@@ -115,30 +127,30 @@ class RunSession(
         movingMillisAtLastMarker = 0
     }
 
-    fun pause(now: Instant) {
+    fun pause(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()) {
         if (state != RunSessionState.TRACKING) return
-        currentTime = now
-        closeTrackingWindow(now)
+        currentElapsedMillis = elapsedRealtimeMillis
+        closeTrackingWindow(elapsedRealtimeMillis)
         state = RunSessionState.PAUSED
         anchorFix = null
     }
 
-    fun resume(now: Instant) {
+    fun resume(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()) {
         if (state != RunSessionState.PAUSED) return
-        currentTime = now
+        currentElapsedMillis = elapsedRealtimeMillis
         state = RunSessionState.TRACKING
-        trackingSince = now
+        trackingSinceMillis = elapsedRealtimeMillis
         segmentIndex++
     }
 
     /** Ends the run for good. */
-    fun finish(now: Instant): List<RunSessionEvent> {
+    fun finish(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()): List<RunSessionEvent> {
         if (state != RunSessionState.TRACKING && state != RunSessionState.PAUSED) {
             return emptyList()
         }
-        currentTime = now
-        closeTrackingWindow(now)
-        endedAt = now
+        currentElapsedMillis = elapsedRealtimeMillis
+        closeTrackingWindow(elapsedRealtimeMillis)
+        endedElapsedMillis = elapsedRealtimeMillis
         state = RunSessionState.FINISHED
         anchorFix = null
         return closeFinalSplit()
@@ -148,36 +160,41 @@ class RunSession(
      * Advances the clock without a new fix — drives the countdown and keeps the
      * on-screen timer moving between GPS updates.
      */
-    fun tick(now: Instant): List<RunSessionEvent> {
+    fun tick(now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()): List<RunSessionEvent> {
         if (!snapshot.isActive) return emptyList()
-        currentTime = now
+        currentElapsedMillis = elapsedRealtimeMillis
 
         if (state != RunSessionState.COUNTDOWN) return emptyList()
 
-        val endsAt = countdownEndsAt ?: return emptyList()
-        if (!now.isBefore(endsAt)) {
+        val endsAt = countdownEndsMillis ?: return emptyList()
+        if (elapsedRealtimeMillis >= endsAt) {
             countdownRemaining = 0
             return listOf(RunSessionEvent.CountdownTick(0), beginTracking(endsAt))
         }
 
-        val remaining = ceil(Duration.between(now, endsAt).toMillis() / 1000.0).toInt()
+        val remaining = ceil((endsAt - elapsedRealtimeMillis) / 1000.0).toInt()
         if (remaining == countdownRemaining) return emptyList()
         countdownRemaining = remaining
         return listOf(RunSessionEvent.CountdownTick(remaining))
     }
 
     /** Offers a new location reading to the run. */
-    fun onFix(fix: GpsFix, now: Instant): List<RunSessionEvent> {
+    fun onFix(fix: GpsFix, now: Instant, elapsedRealtimeMillis: Long = now.toEpochMilli()): List<RunSessionEvent> {
         if (state != RunSessionState.COUNTDOWN && state != RunSessionState.TRACKING) {
             return emptyList()
         }
-        currentTime = now
+        currentElapsedMillis = elapsedRealtimeMillis
 
-        val verdict = filter.evaluate(fix, previous = anchorFix, now = now)
+        if (state == RunSessionState.TRACKING && fix.elapsedRealtimeMillis < checkNotNull(trackingSinceMillis)) {
+            return listOf(RunSessionEvent.FixRejected(FixVerdict.BEFORE_TRACKING))
+        }
+        val verdict = filter.evaluate(fix, previous = anchorFix, now = now,
+            elapsedRealtimeMillis = elapsedRealtimeMillis)
         if (verdict != FixVerdict.ACCEPTED) {
             return listOf(RunSessionEvent.FixRejected(verdict))
         }
-        lastFix = fix
+        val timedFix = fix.copy(timestamp = wallTimeAt(fix.elapsedRealtimeMillis))
+        lastFix = timedFix
 
         // Warm-up fixes only prove the GPS has a lock; they are not part of the run.
         if (state == RunSessionState.COUNTDOWN) return emptyList()
@@ -185,13 +202,13 @@ class RunSession(
         val previous = anchorFix
         val movingBefore = movingMillisAtAnchor
         val distanceBefore = distanceMeters
-        val movingNow = movingMillisAt(fix.timestamp)
+        val movingNow = movingMillisAt(fix.elapsedRealtimeMillis)
 
-        anchorFix = fix
+        anchorFix = timedFix
         movingMillisAtAnchor = movingNow
 
         val events = mutableListOf<RunSessionEvent>(
-            RunSessionEvent.PointRecorded(TrackedPoint(fix, segmentIndex)),
+            RunSessionEvent.PointRecorded(TrackedPoint(timedFix, segmentIndex)),
         )
         if (previous == null) return events
 
@@ -266,38 +283,39 @@ class RunSession(
 
     // --- internals -----------------------------------------------------------
 
-    private fun beginTracking(now: Instant): RunSessionEvent {
+    private fun beginTracking(elapsedRealtimeMillis: Long): RunSessionEvent {
         state = RunSessionState.TRACKING
-        startedAt = now
-        trackingSince = now
-        countdownEndsAt = null
+        startedAt = wallTimeAt(elapsedRealtimeMillis)
+        startedElapsedMillis = elapsedRealtimeMillis
+        trackingSinceMillis = elapsedRealtimeMillis
+        countdownEndsMillis = null
         countdownRemaining = 0
         // The warm-up position must not become the first leg of the run.
         anchorFix = null
         return RunSessionEvent.TrackingStarted
     }
 
-    private fun closeTrackingWindow(now: Instant) {
-        val since = trackingSince ?: return
-        movingMillisBanked += Duration.between(since, now).toMillis()
-        trackingSince = null
+    private fun closeTrackingWindow(elapsedRealtimeMillis: Long) {
+        val since = trackingSinceMillis ?: return
+        movingMillisBanked += (elapsedRealtimeMillis - since)
+        trackingSinceMillis = null
     }
 
     /** Moving time at an instant inside the current tracking window. */
-    private fun movingMillisAt(instant: Instant): Long {
-        val since = trackingSince ?: return movingMillisBanked
-        return movingMillisBanked + Duration.between(since, instant).toMillis()
+    private fun movingMillisAt(elapsedRealtimeMillis: Long): Long {
+        val since = trackingSinceMillis ?: return movingMillisBanked
+        return movingMillisBanked + (elapsedRealtimeMillis - since)
     }
 
     private fun movingMillis(): Long {
-        val since = trackingSince ?: return movingMillisBanked
-        val now = currentTime ?: return movingMillisBanked
-        return movingMillisBanked + Duration.between(since, now).toMillis()
+        val since = trackingSinceMillis ?: return movingMillisBanked
+        val now = currentElapsedMillis ?: return movingMillisBanked
+        return movingMillisBanked + (now - since)
     }
 
     private fun elapsedMillis(): Long {
-        val from = startedAt ?: return 0
-        val to = endedAt ?: currentTime ?: return 0
-        return Duration.between(from, to).toMillis()
+        val from = startedElapsedMillis ?: return 0
+        val to = endedElapsedMillis ?: currentElapsedMillis ?: return 0
+        return to - from
     }
 }

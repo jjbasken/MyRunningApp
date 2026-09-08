@@ -1,5 +1,6 @@
 package com.myrunningapp.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.myrunningapp.domain.model.ActivityType
@@ -18,6 +19,8 @@ data class RunEntity(
     val avgPaceSecPerMile: Double,
     val calories: Int,
     val weightKgAtRun: Double,
+    @ColumnInfo(defaultValue = "0") val isInProgress: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val wasRecovered: Boolean = false,
 ) {
     fun toDomain(): Run = Run(
         id = id,
@@ -30,6 +33,7 @@ data class RunEntity(
         avgPaceSecPerMile = avgPaceSecPerMile,
         calories = calories,
         weightKgAtRun = weightKgAtRun,
+        wasRecovered = wasRecovered,
     )
 
     companion object {
@@ -44,6 +48,7 @@ data class RunEntity(
             avgPaceSecPerMile = run.avgPaceSecPerMile,
             calories = run.calories,
             weightKgAtRun = run.weightKgAtRun,
+            wasRecovered = run.wasRecovered,
         )
     }
 }

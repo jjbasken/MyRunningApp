@@ -69,6 +69,7 @@ class FusedLocationClient @Inject constructor(
 
 private fun Location.toGpsFix(): GpsFix = GpsFix(
     timestamp = Instant.ofEpochMilli(time),
+    elapsedRealtimeMillis = elapsedRealtimeNanos / 1_000_000L,
     latitude = latitude,
     longitude = longitude,
     altitudeMeters = if (hasAltitude()) altitude else 0.0,

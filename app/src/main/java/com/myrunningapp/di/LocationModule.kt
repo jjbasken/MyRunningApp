@@ -1,6 +1,8 @@
 package com.myrunningapp.di
 
 import android.content.Context
+import android.os.SystemClock
+import com.myrunningapp.domain.tracking.MonotonicClock
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.myrunningapp.data.location.FusedLocationClient
@@ -33,6 +35,10 @@ object LocationModule {
     @Provides
     @Singleton
     fun provideClock(): Clock = Clock.systemUTC()
+
+    @Provides
+    @Singleton
+    fun provideMonotonicClock(): MonotonicClock = MonotonicClock { SystemClock.elapsedRealtime() }
 }
 
 @Module

@@ -20,4 +20,5 @@ data class Run(
     val calories: Int,
     /** Weight used for this run's calorie estimate, frozen at finish time. */
     val weightKgAtRun: Double,
+    val wasRecovered: Boolean = false,
 )
