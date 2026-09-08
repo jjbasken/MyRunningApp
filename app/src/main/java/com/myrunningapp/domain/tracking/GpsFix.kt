@@ -15,4 +15,6 @@ data class GpsFix(
     val longitude: Double,
     val altitudeMeters: Double,
     val accuracyMeters: Float,
+    /** Android supplies Location.elapsedRealtimeNanos; the default supports dated replay traces. */
+    val elapsedRealtimeMillis: Long = timestamp.toEpochMilli(),
 )

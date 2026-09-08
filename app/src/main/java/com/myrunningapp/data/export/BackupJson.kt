@@ -48,6 +48,7 @@ object BackupJson {
                 avgPaceSecPerMile = run.avgPaceSecPerMile,
                 calories = run.calories,
                 weightKgAtRun = run.weightKgAtRun,
+                wasRecovered = run.wasRecovered,
                 splits = splitsByRun[run.id].orEmpty().map { split ->
                     BackupSplit(
                         splitNumber = split.splitNumber,

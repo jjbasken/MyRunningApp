@@ -22,6 +22,9 @@ interface RunRecorder {
         weightKg: Double,
     ): Long
 
+    /** Atomically saves a recoverable summary, new points and the current splits. */
+    suspend fun checkpoint(runId: Long, points: List<TrackedPoint>, snapshot: RunSnapshot, at: Instant)
+
     /** Appends a batch of accepted GPS points to a run in progress. */
     suspend fun recordPoints(runId: Long, points: List<TrackedPoint>)
 

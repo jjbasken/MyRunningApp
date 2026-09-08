@@ -3,6 +3,8 @@ package com.myrunningapp.data.export
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.data.repository.RunRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import javax.inject.Inject
@@ -26,10 +28,10 @@ class RunExporter @Inject constructor(
 ) {
 
     /** One run as GPX, for handing to another running app. */
-    suspend fun exportRun(runId: Long, zone: ZoneId = ZoneId.systemDefault()): ExportDocument? {
-        val run = runRepository.getRun(runId) ?: return null
+    suspend fun exportRun(runId: Long, zone: ZoneId = ZoneId.systemDefault()): ExportDocument? = withContext(Dispatchers.Default) {
+        val run = runRepository.getRun(runId) ?: return@withContext null
         val points = runRepository.points(runId).first()
-        return ExportDocument(
+        ExportDocument(
             fileName = ExportFileNames.forRun(run, zone),
             mimeType = GPX_MIME,
             content = GpxWriter.write(run, points),
@@ -44,7 +46,7 @@ class RunExporter @Inject constructor(
     suspend fun exportEverything(
         exportedAt: Instant = Instant.now(),
         zone: ZoneId = ZoneId.systemDefault(),
-    ): ExportDocument {
+    ): ExportDocument = withContext(Dispatchers.Default) {
         val runs = runRepository.runs.first()
         val backup = BackupJson.build(
             exportedAt = exportedAt,
@@ -53,7 +55,7 @@ class RunExporter @Inject constructor(
             pointsByRun = runs.associate { it.id to runRepository.points(it.id).first() },
             splitsByRun = runs.associate { it.id to runRepository.splits(it.id).first() },
         )
-        return ExportDocument(
+        ExportDocument(
             fileName = ExportFileNames.forBackup(exportedAt, zone),
             mimeType = JSON_MIME,
             content = BackupJson.encode(backup),

@@ -13,6 +13,12 @@ enum class FixVerdict {
     /** The fix arrived too long after it was taken to still describe where we are. */
     STALE,
 
+    /** The fix predates the current unpaused tracking window. */
+    BEFORE_TRACKING,
+
+    /** A fix cannot have been taken after the time it is delivered. */
+    FUTURE,
+
     /** Its timestamp is not after the previous accepted fix, so it adds nothing. */
     OUT_OF_ORDER,
 
@@ -35,15 +41,23 @@ class GpsFilter(
 
     /**
      * @param previous the last fix that was accepted, or null if this is the first.
-     * @param now when the fix is being handled, used for the staleness check.
+     * @param now wall time for dated replays. Android callers supply elapsedRealtimeMillis.
+     * @param elapsedRealtimeMillis time since boot when this fix is handled.
      */
-    fun evaluate(fix: GpsFix, previous: GpsFix?, now: Instant): FixVerdict {
+    fun evaluate(
+        fix: GpsFix,
+        previous: GpsFix?,
+        now: Instant,
+        elapsedRealtimeMillis: Long = now.toEpochMilli(),
+    ): FixVerdict {
         if (fix.accuracyMeters > maxAccuracyMeters) return FixVerdict.POOR_ACCURACY
-        if (Duration.between(fix.timestamp, now) > maxAge) return FixVerdict.STALE
+        val ageMillis = elapsedRealtimeMillis - fix.elapsedRealtimeMillis
+        if (ageMillis < 0) return FixVerdict.FUTURE
+        if (ageMillis > maxAge.toMillis()) return FixVerdict.STALE
 
         if (previous != null) {
             val elapsedSeconds =
-                Duration.between(previous.timestamp, fix.timestamp).toMillis() / 1000.0
+                (fix.elapsedRealtimeMillis - previous.elapsedRealtimeMillis) / 1000.0
             if (elapsedSeconds <= 0.0) return FixVerdict.OUT_OF_ORDER
 
             val meters = Geo.distanceMeters(

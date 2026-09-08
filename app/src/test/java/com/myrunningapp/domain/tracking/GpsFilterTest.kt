@@ -95,4 +95,18 @@ class GpsFilterTest {
             filter.evaluate(bad, previous = previous, now = bad.timestamp),
         )
     }
+    @Test
+    fun `freshness and order follow elapsed time despite wall clock changes`() {
+        val previous = fix(0).copy(elapsedRealtimeMillis = 100_000)
+        val next = fix(-3600, latitude = 51.50003).copy(elapsedRealtimeMillis = 101_000)
+        assertEquals(FixVerdict.ACCEPTED, filter.evaluate(next, previous,
+            t0.plusSeconds(3600), elapsedRealtimeMillis = 101_000))
+        assertEquals(FixVerdict.STALE, filter.evaluate(next, null,
+            t0.minusSeconds(7200), elapsedRealtimeMillis = 107_000))
+        assertEquals(FixVerdict.OUT_OF_ORDER, filter.evaluate(previous, next,
+            t0, elapsedRealtimeMillis = 101_000))
+        assertEquals(FixVerdict.FUTURE, filter.evaluate(next, null,
+            t0, elapsedRealtimeMillis = 100_000))
+    }
+
 }

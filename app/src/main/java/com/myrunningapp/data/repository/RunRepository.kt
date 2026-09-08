@@ -7,6 +7,7 @@ import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.data.location.RunRecorder
+import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.calories.CalorieCalculator
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.Profile
@@ -50,7 +51,10 @@ class RunRepository @Inject constructor(
 
     suspend fun getRun(runId: Long): Run? = runDao.getById(runId)?.toDomain()
 
-    suspend fun updateRun(run: Run) = runDao.update(RunEntity.fromDomain(run))
+    suspend fun updateRun(run: Run) {
+        if (runDao.getById(run.id)?.isInProgress != false) return
+        runDao.update(RunEntity.fromDomain(run))
+    }
 
     /**
      * Corrects a run recorded as the wrong activity, re-estimating its calories:
@@ -59,6 +63,7 @@ class RunRepository @Inject constructor(
      */
     suspend fun updateActivityType(runId: Long, activityType: ActivityType) {
         val existing = runDao.getById(runId) ?: return
+        if (existing.isInProgress) return
         runDao.update(
             existing.copy(
                 activityType = activityType,
@@ -99,8 +104,55 @@ class RunRepository @Inject constructor(
             avgPaceSecPerMile = 0.0,
             calories = 0,
             weightKgAtRun = weightKg,
+            isInProgress = true,
         ),
     )
+
+    override suspend fun checkpoint(
+        runId: Long,
+        points: List<TrackedPoint>,
+        snapshot: RunSnapshot,
+        at: Instant,
+    ) {
+        val existing = runDao.getById(runId) ?: return
+        val splits = snapshot.completedSplits.map { split ->
+            SplitEntity(
+                runId = runId, splitNumber = split.splitNumber,
+                distanceMeters = split.distanceMeters, durationSec = split.durationSec,
+                paceSecPerMile = split.paceSecPerMile,
+            )
+        }.toMutableList()
+        // Keep the unfinished mile too, so a recovered activity has a complete splits table.
+        val remainder = snapshot.distanceMeters - splits.sumOf { it.distanceMeters }
+        if (remainder >= 1.0) {
+            val duration = (snapshot.movingDurationSec -
+                (snapshot.completedSplits.lastOrNull()?.cumulativeMovingSec ?: 0L)).coerceAtLeast(0)
+            splits += SplitEntity(
+                runId = runId, splitNumber = splits.size + 1, distanceMeters = remainder,
+                durationSec = duration, paceSecPerMile = Units.paceSecPerMile(remainder, duration),
+            )
+        }
+        runDao.checkpoint(
+            existing.copy(
+                endedAt = at,
+                distanceMeters = snapshot.distanceMeters,
+                movingDurationSec = snapshot.movingDurationSec,
+                elapsedDurationSec = snapshot.elapsedDurationSec,
+                avgPaceSecPerMile = snapshot.avgPaceSecPerMile.takeIf { it.isFinite() } ?: 0.0,
+                calories = estimateCalories(existing.activityType, snapshot.distanceMeters,
+                    snapshot.movingDurationSec, existing.weightKgAtRun),
+            ),
+            points.map { tracked ->
+                RunPointEntity(
+                    runId = runId, timestamp = tracked.fix.timestamp,
+                    latitude = tracked.fix.latitude, longitude = tracked.fix.longitude,
+                    altitudeMeters = tracked.fix.altitudeMeters,
+                    accuracyMeters = tracked.fix.accuracyMeters, segmentIndex = tracked.segmentIndex,
+                )
+            },
+            splits,
+        )
+    }
 
     override suspend fun recordPoints(runId: Long, points: List<TrackedPoint>) {
         if (points.isEmpty()) return
@@ -137,6 +189,7 @@ class RunRepository @Inject constructor(
         runDao.update(
             existing.copy(
                 endedAt = endedAt,
+                isInProgress = false,
                 distanceMeters = snapshot.distanceMeters,
                 movingDurationSec = snapshot.movingDurationSec,
                 elapsedDurationSec = snapshot.elapsedDurationSec,

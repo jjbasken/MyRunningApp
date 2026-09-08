@@ -45,6 +45,7 @@ data class BackupRun(
     val weightKgAtRun: Double,
     val splits: List<BackupSplit>,
     val points: List<BackupPoint>,
+    val wasRecovered: Boolean = false,
 )
 
 @Serializable

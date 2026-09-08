@@ -116,4 +116,6 @@
     <string name="profile_export_all_hint">One file with every activity, its route and its splits — this app has no server, so the export is the backup.</string>
     <string name="export_saved">Saved %1$s</string>
     <string name="export_failed">Could not write the file</string>
+    <string name="run_recovered">Recovered activity</string>
+    <string name="run_recovered_detail">Recording was interrupted. This activity was saved through the last checkpoint; the final few seconds may be missing.</string>
 </resources>
