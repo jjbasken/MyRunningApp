@@ -94,14 +94,25 @@ fun RunDetailScreen(onBack: () -> Unit, viewModel: RunDetailViewModel = hiltView
                 state.run == null -> Text(stringResource(R.string.route_not_found))
                 else -> {
                     val run = checkNotNull(state.run)
-                    Text(
-                        remember {
-                            DateTimeFormatter
-                                .ofLocalizedDateTime(FormatStyle.FULL, FormatStyle.SHORT)
-                                .withZone(ZoneId.systemDefault())
-                        }.format(run.startedAt),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    val startedAt = run.startedAt.atZone(ZoneId.systemDefault())
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG) }
+                                .format(startedAt),
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Text(
+                            remember { DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT) }
+                                .format(startedAt),
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     // A fixed height, not weight(): this column scrolls, and a map
                     // with no intrinsic height would otherwise collapse to nothing.
                     RouteMap(
