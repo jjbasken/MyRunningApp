@@ -51,7 +51,6 @@
     <string name="track_notification_countdown">Starting in %1$d s</string>
     <string name="track_notification_paused">Paused</string>
     <string name="track_notification_running">%1$s · %2$s</string>
-    <string name="placeholder_history">Run history — coming in milestone 5</string>
     <string name="view_saved_route">View saved route</string>
     <string name="map_mile">Mile %1$d</string>
     <string name="map_current_position">Current position</string>
@@ -62,6 +61,36 @@
     <string name="map_empty">No GPS points recorded for this activity.</string>
     <string name="route_back">Back</string>
     <string name="route_not_found">This activity is no longer available.</string>
-    <string name="saved_routes">Saved routes</string>
-    <string name="no_saved_routes">Your recorded routes will appear here.</string>
+    <!-- Shared -->
+    <string name="action_cancel">Cancel</string>
+    <string name="stat_distance">Distance</string>
+    <string name="stat_moving_time">Moving time</string>
+    <string name="stat_elapsed_time">Elapsed time</string>
+    <string name="stat_avg_pace">Average pace</string>
+    <string name="stat_calories">Calories</string>
+    <string name="stat_calories_value">%1$d kcal</string>
+
+    <!-- History screen -->
+    <string name="history_title">History</string>
+    <string name="history_this_week">This week</string>
+    <string name="history_all_time">All time</string>
+    <string name="history_empty">Finished activities appear here, newest first. Long-press one to delete it.</string>
+    <string name="history_delete_title">Delete this activity?</string>
+    <string name="history_delete_message">%1$s will be removed, along with its route and splits. This cannot be undone.</string>
+    <string name="history_delete_confirm">Delete</string>
+    <plurals name="history_activity_count">
+        <item quantity="one">%1$d activity</item>
+        <item quantity="other">%1$d activities</item>
+    </plurals>
+
+    <!-- Run detail screen -->
+    <string name="detail_activity_type">Activity type</string>
+    <string name="detail_splits">Splits</string>
+    <string name="detail_no_splits">No splits recorded for this activity.</string>
+    <string name="detail_split_mile">Mile</string>
+    <string name="detail_split_distance">Distance</string>
+    <string name="detail_split_pace">Pace</string>
+    <string name="detail_split_time">Time</string>
+    <string name="detail_delete">Delete this activity</string>
+    <string name="detail_delete_message">This activity, its route and its splits will be removed. This cannot be undone.</string>
 </resources>

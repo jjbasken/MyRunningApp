@@ -7,7 +7,9 @@ import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.data.location.RunRecorder
+import com.myrunningapp.domain.calories.CalorieCalculator
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.model.RunPoint
 import com.myrunningapp.domain.model.Split
@@ -32,6 +34,7 @@ class RunRepository @Inject constructor(
     private val runDao: RunDao,
     private val runPointDao: RunPointDao,
     private val splitDao: SplitDao,
+    private val profileRepository: ProfileRepository,
 ) : RunRecorder {
     val runs: Flow<List<Run>> =
         runDao.observeAll().map { list -> list.map(RunEntity::toDomain) }
@@ -49,6 +52,27 @@ class RunRepository @Inject constructor(
 
     suspend fun updateRun(run: Run) = runDao.update(RunEntity.fromDomain(run))
 
+    /**
+     * Corrects a run recorded as the wrong activity, re-estimating its calories:
+     * the same distance and time cost noticeably more running than walking, so
+     * leaving the old number would contradict the label right beside it.
+     */
+    suspend fun updateActivityType(runId: Long, activityType: ActivityType) {
+        val existing = runDao.getById(runId) ?: return
+        runDao.update(
+            existing.copy(
+                activityType = activityType,
+                calories = estimateCalories(
+                    activityType = activityType,
+                    distanceMeters = existing.distanceMeters,
+                    movingDurationSec = existing.movingDurationSec,
+                    weightKgAtRun = existing.weightKgAtRun,
+                ),
+            ),
+        )
+    }
+
+    /** Deletes a run; its points and splits go with it via `ON DELETE CASCADE`. */
     suspend fun deleteRun(runId: Long) = runDao.deleteById(runId)
 
     // --- RunRecorder: the tracking service's write path -----------------------
@@ -107,10 +131,7 @@ class RunRepository @Inject constructor(
         )
     }
 
-    /**
-     * Fills in the summary. Calories stay at zero until milestone 5 wires up the
-     * calculator; the weight snapshot it will need is already on the row.
-     */
+    /** Fills in the summary, including the calorie estimate, once a run is over. */
     override suspend fun finishRun(runId: Long, snapshot: RunSnapshot, endedAt: Instant) {
         val existing = runDao.getById(runId) ?: return
         runDao.update(
@@ -120,6 +141,38 @@ class RunRepository @Inject constructor(
                 movingDurationSec = snapshot.movingDurationSec,
                 elapsedDurationSec = snapshot.elapsedDurationSec,
                 avgPaceSecPerMile = snapshot.avgPaceSecPerMile.takeIf { it.isFinite() } ?: 0.0,
+                calories = estimateCalories(
+                    activityType = existing.activityType,
+                    distanceMeters = snapshot.distanceMeters,
+                    movingDurationSec = snapshot.movingDurationSec,
+                    weightKgAtRun = existing.weightKgAtRun,
+                ),
+            ),
+        )
+    }
+
+    /**
+     * Estimates calories against the run's own **weight snapshot** rather than
+     * today's weight, so a profile edit never rewrites past runs. Height, age and
+     * sex — which only tune the resting term — are read live; they change rarely
+     * enough that snapshotting all four would be more bookkeeping than it is worth.
+     */
+    private suspend fun estimateCalories(
+        activityType: ActivityType,
+        distanceMeters: Double,
+        movingDurationSec: Long,
+        weightKgAtRun: Double,
+    ): Int {
+        val profile = profileRepository.get()
+        return CalorieCalculator.calories(
+            activityType = activityType,
+            distanceMeters = distanceMeters,
+            movingDurationSec = movingDurationSec,
+            profile = Profile(
+                weightKg = weightKgAtRun.takeIf { it > 0.0 } ?: profile.weightKg,
+                heightCm = profile.heightCm,
+                age = profile.age,
+                sex = profile.sex,
             ),
         )
     }
