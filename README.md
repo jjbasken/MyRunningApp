@@ -39,11 +39,20 @@ app/src/main/java/com/myrunningapp/
   di/          Hilt modules
 ```
 
+## Testing the GPS pipeline without going outside
+
+`app/src/test/resources/traces/` holds recorded-shaped GPS traces of known
+length, and `GpsReplay` feeds one through the real filter, distance and split
+code. `GpsReplayTest` asserts a surveyed 3240 m loop measures within the design's
+2% budget and produces the right mile splits — so distance and pace changes can
+be checked in seconds rather than on a run.
+
 ## Milestones
 
-1. **Skeleton** *(current)* — builds; bottom-nav between Track / History /
+1. **Skeleton** — builds; bottom-nav between Track / History /
    Profile; Room database; the Profile screen works end to end.
-2. Tracking core — GPS foreground service, distance/pace math, persistence.
+2. **Tracking core** *(current)* — GPS foreground service, distance/pace math,
+   mile splits, persistence; a plain Track screen with start / pause / stop.
 3. Map — live route and per-run route via osmdroid.
 4. Announcements — mile splits spoken via TTS; start countdown.
 5. History & detail — run list, totals, splits table, calories.
