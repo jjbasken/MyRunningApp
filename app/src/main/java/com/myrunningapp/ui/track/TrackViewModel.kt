@@ -3,6 +3,8 @@ package com.myrunningapp.ui.track
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.myrunningapp.data.location.RunTracker
+import com.myrunningapp.data.location.LocationClient
+import com.myrunningapp.domain.tracking.GpsFix
 import com.myrunningapp.data.prefs.PreferencesRepository
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.domain.model.ActivityType
@@ -13,6 +15,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -43,9 +48,19 @@ class TrackViewModel @Inject constructor(
     private val tracker: RunTracker,
     private val preferencesRepository: PreferencesRepository,
     private val profileRepository: ProfileRepository,
+    locationClient: LocationClient,
 ) : ViewModel() {
 
     val route = tracker.route
+
+    // Collected only by the resumed idle screen after permission is granted.
+    // Preview fixes never enter the recorder or contribute to run distance.
+    val locationPreview = locationClient.fixes()
+        .map<GpsFix, GpsFix?> { it }
+        .catch { error ->
+            if (error is CancellationException) throw error
+            emit(null)
+        }
 
     private val selectedActivityType = MutableStateFlow(ActivityType.RUN)
 
