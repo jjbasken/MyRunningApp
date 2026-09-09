@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
 import com.myrunningapp.data.location.LocationTrackingService
@@ -82,6 +83,20 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
         grants = context.locationGrants()
         onPauseOrDispose { }
     }
+
+    val previewLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        grants = context.locationGrants()
+        foregroundDenied = !grants.fineLocationGranted
+    }
+    val preview = if (state.snapshot.state == RunSessionState.IDLE && grants.fineLocationGranted) {
+        val fix by viewModel.locationPreview.collectAsStateWithLifecycle(
+            initialValue = null,
+            minActiveState = Lifecycle.State.RESUMED,
+        )
+        fix
+    } else null
 
     val status = PermissionStatus(
         fineLocationGranted = grants.fineLocationGranted,
@@ -186,12 +201,22 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
             }
             RouteMap(
                 points = mapPoints,
-                currentPosition = state.snapshot.lastFix?.let {
+                currentPosition = (state.snapshot.lastFix ?: preview)?.let {
                     RouteCoordinate(it.latitude, it.longitude, state.snapshot.segmentIndex)
                 },
                 live = true,
                 modifier = Modifier.fillMaxWidth().height(280.dp),
             )
+            if (state.snapshot.state == RunSessionState.IDLE && !grants.fineLocationGranted) {
+                TextButton(onClick = {
+                    previewLauncher.launch(arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ))
+                }) {
+                    Text(stringResource(R.string.map_show_location))
+                }
+            }
             StatsBlock(state.snapshot)
         }
 

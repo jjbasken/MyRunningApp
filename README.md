@@ -92,6 +92,11 @@ engine visibility for voice announcements on Android 11 and later.
 
 ## Checking the maps (Milestone 3)
 
+- Before starting an activity, tap **Show my location** if permission has not
+  been granted. With precise location enabled, the idle Track screen previews
+  your position while it is in the foreground; these fixes are not recorded.
+- If tiles fail to load, check the internet connection and tap **Retry map**.
+  Location and route recording do not depend on tile downloads.
 - Start an activity outdoors with location permission. Accepted GPS points should
   appear immediately on the Track map, with a current-position marker.
 - Pan the map to unlock the camera; new fixes should leave the camera where you

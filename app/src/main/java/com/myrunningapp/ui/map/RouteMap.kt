@@ -6,8 +6,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.view.MotionEvent
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
@@ -33,6 +36,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.myrunningapp.R
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.MapTileProviderBase
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -40,7 +44,7 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 
-/** Shared map; location comes from the tracker, never a second GPS subscription. */
+/** Shared map; the caller supplies recording fixes or a foreground location preview. */
 @Composable
 fun RouteMap(
     points: List<RouteCoordinate>,
@@ -53,6 +57,7 @@ fun RouteMap(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val uriHandler = LocalUriHandler.current
     var following by rememberSaveable { mutableStateOf(true) }
+    var tileLoadFailed by remember { mutableStateOf(false) }
     val map = remember(context) {
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
@@ -67,6 +72,17 @@ fun RouteMap(
                 if (event.actionMasked == MotionEvent.ACTION_MOVE) following = false
                 false
             }
+        }
+    }
+    DisposableEffect(map) {
+        val handler = Handler(Looper.getMainLooper()) { message ->
+            if (message.what == MapTileProviderBase.MAPTILE_FAIL_ID) tileLoadFailed = true
+            true
+        }
+        map.tileProvider.tileRequestCompleteHandlers.add(handler)
+        onDispose {
+            map.tileProvider.tileRequestCompleteHandlers.remove(handler)
+            handler.removeCallbacksAndMessages(null)
         }
     }
     DisposableEffect(map, lifecycle) {
@@ -150,6 +166,20 @@ fun RouteMap(
     // Android map tiles must stay inside the space allocated by Compose.
     Box(modifier.clipToBounds()) {
         AndroidView(factory = { map }, modifier = Modifier.matchParentSize())
+        if (tileLoadFailed) {
+            Surface(modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
+                Column(Modifier.padding(8.dp)) {
+                    Text(stringResource(R.string.map_tiles_failed), style = MaterialTheme.typography.labelSmall)
+                    TextButton(onClick = {
+                        tileLoadFailed = false
+                        map.tileProvider.clearTileCache()
+                        map.invalidate()
+                    }) {
+                        Text(stringResource(R.string.map_retry))
+                    }
+                }
+            }
+        }
         if (live) {
             Surface(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp), shape = MaterialTheme.shapes.small) {
                 TextButton(onClick = { following = !following }) {
