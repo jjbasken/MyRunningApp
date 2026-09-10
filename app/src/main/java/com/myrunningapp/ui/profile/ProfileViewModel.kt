@@ -2,16 +2,23 @@ package com.myrunningapp.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.myrunningapp.data.db.dao.HealthSyncDao
 import com.myrunningapp.data.export.ExportDocument
 import com.myrunningapp.data.export.RunExporter
+import com.myrunningapp.data.health.HealthConnectGateway
+import com.myrunningapp.data.health.HealthPermissions
+import com.myrunningapp.data.health.HealthSyncScheduler
 import com.myrunningapp.data.prefs.PreferencesRepository
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.domain.Units
+import com.myrunningapp.domain.health.HealthSyncStatus
+import com.myrunningapp.domain.health.HealthSyncUiState
 import com.myrunningapp.domain.model.CountdownLength
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,18 +35,43 @@ class ProfileViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val preferencesRepository: PreferencesRepository,
     private val exporter: RunExporter,
+    private val gateway: HealthConnectGateway,
+    private val healthSyncDao: HealthSyncDao,
+    private val healthSyncScheduler: HealthSyncScheduler,
 ) : ViewModel() {
+
+    /**
+     * Bumped to re-read permission state. Permission is granted outside this app,
+     * in Health Connect's own UI, so nothing else would re-emit when the user
+     * comes back.
+     */
+    private val healthRefresh = MutableStateFlow(0)
+
+    private val healthSync: Flow<HealthSyncUiState> = combine(
+        preferencesRepository.preferences,
+        healthSyncDao.observeCounts(),
+        healthRefresh,
+    ) { prefs, counts, _ ->
+        HealthSyncStatus.of(
+            availability = gateway.availability(),
+            enabled = prefs.healthSyncEnabled,
+            writePermissionsGranted = gateway.hasWritePermissions(),
+            counts = counts,
+        )
+    }
 
     val uiState: StateFlow<ProfileUiState> = combine(
         profileRepository.profile,
         profileRepository.hasSavedProfile,
         preferencesRepository.preferences,
-    ) { profile, hasSaved, prefs ->
+        healthSync,
+    ) { profile, hasSaved, prefs, health ->
         ProfileUiState(
             loading = false,
             profile = profile,
             hasSavedProfile = hasSaved,
             preferences = prefs,
+            healthSync = health,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -115,6 +147,30 @@ class ProfileViewModel @Inject constructor(
 
     fun setColorRouteByPace(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.setColorRouteByPace(enabled) }
+    }
+
+    /** What to hand the Health Connect permission contract. */
+    val healthPermissionsToRequest: Set<String> = HealthPermissions.ALL
+
+    fun setHealthSyncEnabled(enabled: Boolean) = viewModelScope.launch {
+        preferencesRepository.setHealthSyncEnabled(enabled)
+        if (enabled) {
+            // Switching it on is what queues the history; the migration deliberately did not.
+            healthSyncDao.markAllPending()
+            healthSyncScheduler.requestSync()
+        }
+    }
+
+    fun onHealthPermissionResult(granted: Set<String>) = viewModelScope.launch {
+        preferencesRepository.setHealthPermissionAsked(true)
+        healthRefresh.value++
+        if (granted.containsAll(HealthPermissions.WRITE)) healthSyncScheduler.requestSync()
+    }
+
+    fun syncNow() = viewModelScope.launch {
+        healthSyncDao.retryFailed()
+        healthRefresh.value++
+        healthSyncScheduler.requestSync()
     }
 
     sealed interface ProfileEvent {

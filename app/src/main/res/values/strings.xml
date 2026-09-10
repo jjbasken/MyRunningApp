@@ -121,4 +121,16 @@
     <string name="export_failed">Could not write the file</string>
     <string name="run_recovered">Recovered activity</string>
     <string name="run_recovered_detail">Recording was interrupted. This activity was saved through the last checkpoint; the final few seconds may be missing.</string>
+    <string name="health_title">Health Connect</string>
+    <string name="health_toggle">Sync workouts to Health Connect</string>
+    <string name="health_explainer">Publishes each finished run so other apps can read it. Nothing leaves your phone.</string>
+    <string name="health_off_note">Workouts already written stay in Health Connect. Remove them there.</string>
+    <string name="health_synced">Synced %1$d runs</string>
+    <string name="health_waiting">%1$d waiting</string>
+    <string name="health_needs_permission">Permission needed</string>
+    <string name="health_grant">Grant permission</string>
+    <string name="health_open_settings">Open Health Connect</string>
+    <string name="health_update_required">Update Health Connect to sync workouts</string>
+    <string name="health_failed">%1$d runs could not be written</string>
+    <string name="health_sync_now">Sync now</string>
 </resources>
