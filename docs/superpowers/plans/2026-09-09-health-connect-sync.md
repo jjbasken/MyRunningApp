@@ -563,6 +563,7 @@ The sync state column and the deletions table. Nothing writes to them yet.
 - Create: `app/src/main/java/com/myrunningapp/data/db/dao/HealthSyncDao.kt`
 - Create: `app/src/main/java/com/myrunningapp/domain/model/HealthSyncState.kt`
 - Create: `app/src/main/java/com/myrunningapp/domain/model/HealthSyncCounts.kt`
+- Modify: `app/src/main/java/com/myrunningapp/data/db/Converters.kt`
 - Modify: `app/src/main/java/com/myrunningapp/data/db/AppDatabase.kt`
 - Modify: `app/src/main/java/com/myrunningapp/di/DatabaseModule.kt`
 - Test: `app/src/test/java/com/myrunningapp/data/db/HealthSyncDaoTest.kt`
@@ -895,6 +896,29 @@ data class HealthSyncCounts(
     val failed: Int = 0,
 )
 ```
+
+- [ ] **Step 4b: Add the type converter**
+
+Room does not store enums by itself, and this project converts each one
+explicitly. Without this pair, KSP fails with "Cannot figure out how to save this
+field into database".
+
+In `app/src/main/java/com/myrunningapp/data/db/Converters.kt`, add the import
+`com.myrunningapp.domain.model.HealthSyncState` and, beside the `ActivityType`
+pair:
+
+```kotlin
+    @TypeConverter
+    fun healthSyncStateToName(state: HealthSyncState?): String? = state?.name
+
+    @TypeConverter
+    fun nameToHealthSyncState(name: String?): HealthSyncState? =
+        name?.let { HealthSyncState.valueOf(it) }
+```
+
+The stored form is the enum's name, which is what the migration's
+`DEFAULT 'NOT_SYNCED'` and the DAO's `healthSyncState = 'PENDING'` comparisons
+assume.
 
 - [ ] **Step 5: Wire the database up to version 3**
 
