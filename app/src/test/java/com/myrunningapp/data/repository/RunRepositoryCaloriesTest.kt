@@ -11,6 +11,7 @@ import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.domain.tracking.RunSnapshot
 import com.myrunningapp.domain.model.RunSessionState
+import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,6 +37,7 @@ class RunRepositoryCaloriesTest {
         splitDao = FakeSplitDao(),
         profileRepository = ProfileRepository(FakeProfileDao(currentProfile)),
         healthSyncDao = FakeHealthSyncDao(runDao),
+        healthSyncScheduler = mockk(relaxed = true),
     )
 
     private fun snapshot(distanceMeters: Double, movingDurationSec: Long) = RunSnapshot(

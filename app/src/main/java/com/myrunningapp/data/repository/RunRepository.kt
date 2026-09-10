@@ -8,6 +8,7 @@ import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
+import com.myrunningapp.data.health.HealthSyncScheduler
 import com.myrunningapp.data.location.RunRecorder
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.calories.CalorieCalculator
@@ -41,6 +42,7 @@ class RunRepository @Inject constructor(
     private val splitDao: SplitDao,
     private val profileRepository: ProfileRepository,
     private val healthSyncDao: HealthSyncDao,
+    private val healthSyncScheduler: HealthSyncScheduler,
     private val clock: Clock = Clock.systemUTC(),
 ) : RunRecorder {
     val runs: Flow<List<Run>> =
@@ -83,6 +85,7 @@ class RunRepository @Inject constructor(
         )
         // The label and the published workout must agree, so a correction is a rewrite.
         healthSyncDao.markState(runId, HealthSyncState.PENDING)
+        healthSyncScheduler.requestSync()
     }
 
     /**
@@ -98,6 +101,7 @@ class RunRepository @Inject constructor(
             healthSyncDao.queueDeletion(
                 HealthDeletionEntity(runId = runId, requestedAt = clock.instant()),
             )
+            healthSyncScheduler.requestSync()
         }
         runDao.deleteById(runId)
     }
@@ -227,6 +231,7 @@ class RunRepository @Inject constructor(
         // The run is only worth publishing once it is complete, so the outbox is
         // marked here rather than at startRun.
         healthSyncDao.markState(runId, HealthSyncState.PENDING)
+        healthSyncScheduler.requestSync()
     }
 
     /**

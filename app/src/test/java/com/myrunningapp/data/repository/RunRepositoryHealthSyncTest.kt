@@ -11,6 +11,7 @@ import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.RunSessionState
 import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.domain.tracking.RunSnapshot
+import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -33,6 +34,7 @@ class RunRepositoryHealthSyncTest {
             FakeProfileDao(Profile(weightKg = 70.0, heightCm = 175.0, age = 35, sex = Sex.MALE)),
         ),
         healthSyncDao = healthSyncDao,
+        healthSyncScheduler = mockk(relaxed = true),
         clock = Clock.fixed(t0, ZoneOffset.UTC),
     )
 

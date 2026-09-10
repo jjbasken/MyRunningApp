@@ -20,6 +20,7 @@ import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Sex
+import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -128,7 +129,7 @@ class AppDatabaseTest {
     @Test
     fun `active run is hidden and cannot be deleted`() = runTest {
         val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-            ProfileRepository(db.profileDao()), db.healthSyncDao())
+            ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
         val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
         assertTrue(db.runDao().observeAll().first().isEmpty())
         repository.deleteRun(id)
@@ -151,7 +152,7 @@ class AppDatabaseTest {
         try {
             db = open()
             val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-                ProfileRepository(db.profileDao()), db.healthSyncDao())
+                ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
             val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
             val snapshot = RunSnapshot.idle(ActivityType.RUN).copy(
                 state = RunSessionState.PAUSED, startedAt = Instant.EPOCH,
@@ -187,7 +188,7 @@ class AppDatabaseTest {
     @Test
     fun `failed checkpoint rolls back points splits and summary`() = runTest {
         val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-            ProfileRepository(db.profileDao()), db.healthSyncDao())
+            ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
         val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
         val run = db.runDao().getById(id)!!
         val point = RunPointEntity(id = 1, runId = id, timestamp = Instant.EPOCH,
