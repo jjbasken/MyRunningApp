@@ -39,6 +39,21 @@
 The platform-free description of one workout, plus the pure function that turns a
 run into it. No new dependencies — this task is pure Kotlin and pure TDD.
 
+**Health Connect validates these records on construction**, and the rules were
+read out of `connect-client` 1.1.0's own source, not guessed. The builder must
+satisfy all of them or `ExerciseSessionRecord(...)` throws, the write is
+classified `Rejected`, and the run is marked FAILED forever:
+
+- Route: `!minTime.isBefore(startTime) && maxTime.isBefore(endTime)`. **The end
+  is strict** — a route point landing exactly on `endedAt` is rejected, and our
+  last GPS fix routinely does exactly that. Filter the route to
+  `[startedAt, endedAt)`.
+- `ExerciseLap` and `ExerciseSegment` each require `startTime < endTime`. A
+  segment holding a single fix, or a lap whose endpoints both clamp to the same
+  instant, is realistic and throws. Drop degenerate ones.
+- Segments and laps must sit inside the session and must not overlap; touching
+  endpoints (one's end == the next's start) are fine.
+
 The subtle part is **laps**. A `Split` carries `durationSec` (moving time) but no
 timestamps, and Health Connect rejects laps that fall outside the session or
 overlap. So lap boundaries are computed on the *active* timeline: the segments
@@ -2114,10 +2129,15 @@ may re-grant a minute later and the queue should survive that."
 The one file that talks to `androidx.health`, plus the dependencies and manifest
 entries it needs.
 
-**This is the only task whose exact API signatures must be confirmed against the
-resolved artifact** rather than taken on faith from this plan. `connect-client`
-moved several constructors between versions. The contract that must not change is
-`HealthConnectGateway`; how the impl satisfies it is free.
+**The API below was verified against `connect-client` 1.1.0's own sources**, not
+recalled: `Metadata.activelyRecorded(device, clientRecordId)`,
+`ExerciseSessionRecord(..., exerciseRoute = ...)` and
+`ExerciseRoute.Location(time, latitude, longitude, horizontalAccuracy,
+verticalAccuracy, altitude)` all exist with those names, and
+`EXERCISE_SEGMENT_TYPE_UNKNOWN` is a universal segment type compatible with
+running and walking sessions. 1.1.0 is the newest stable release. If the compiler
+still disagrees, fix the implementation — never the `HealthConnectGateway`
+interface the tests depend on.
 
 **Files:**
 - Modify: `gradle/libs.versions.toml`
@@ -2470,25 +2490,14 @@ class HealthConnectGatewayImpl @Inject constructor(
 
 Run: `./gradlew :app:compileDebugKotlin`
 
-If it fails, the resolved `connect-client` differs from what is written above.
-Fix the impl, not the interface. The likely differences, in order of likelihood:
+Expected: compiles. The signatures were checked against the 1.1.0 sources before
+this plan was written, so a failure here means a version other than 1.1.0
+resolved. Check that first. Whatever the cause, fix the implementation and leave
+`HealthConnectGateway` alone — the engine's tests are written against it.
 
-- **`Metadata`** — older versions use a constructor
-  `Metadata(clientRecordId = ..., device = Device(type = Device.TYPE_PHONE))`
-  instead of the `activelyRecorded` factory. Use whichever exists; the
-  `clientRecordId` must be set either way, since the entire delete-and-update
-  strategy depends on it.
-- **`ExerciseSessionRecord`** — the route parameter may be named `exerciseRoute`
-  or absent (route written separately). If absent, `connect-client` is too old
-  for routes: raise the version rather than dropping the feature.
-- **`ExerciseRoute.Location`** — `horizontalAccuracy`/`altitude` are optional;
-  drop them if the signature differs.
-
-To see the real signatures:
-`find ~/.gradle/caches/modules-2 -name 'connect-client-*-sources.jar'` and unzip
-the relevant file, or open the class in Android Studio.
-
-Expected: compiles.
+To read the real signatures yourself:
+`find ~/.gradle/caches/modules-2 -name 'connect-client-*-sources.jar'`, unzip it,
+and read `androidx/health/connect/client/records/`.
 
 - [ ] **Step 7: Bind it with Hilt**
 
