@@ -93,11 +93,18 @@ fun HealthSyncSection(
                 }
             }
 
-            is HealthSyncUiState.Working -> Text(
-                text = pluralStringResource(R.plurals.health_waiting, state.pending, state.pending),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            is HealthSyncUiState.Working -> {
+                Text(
+                    text = pluralStringResource(R.plurals.health_waiting, state.pending, state.pending),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                // The manual escape hatch: a page-sized drain can otherwise sit
+                // waiting on the worker's own schedule with no way to nudge it.
+                TextButton(onClick = onSyncNow) {
+                    Text(stringResource(R.string.health_sync_now))
+                }
+            }
 
             is HealthSyncUiState.UpToDate -> Text(
                 text = pluralStringResource(R.plurals.health_synced, state.synced, state.synced),

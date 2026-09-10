@@ -2,6 +2,7 @@ package com.myrunningapp.ui.profile
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -142,7 +143,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
 private fun openHealthConnectSettings(context: Context) {
     runCatching {
         context.startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
-    }
+    }.onFailure { e -> Log.w("ProfileScreen", "Could not open Health Connect settings", e) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
