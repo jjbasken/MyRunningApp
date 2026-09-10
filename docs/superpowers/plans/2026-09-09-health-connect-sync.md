@@ -3310,4 +3310,5 @@ Not automatable; run on a real device before calling the milestone done.
 - [ ] Delete a run: it disappears from Health Connect.
 - [ ] Revoke permission in Health Connect, finish a run: the app does not crash, does not nag, and the settings line reads "Permission needed". Re-grant: the queued run publishes.
 - [ ] Decline the permission dialog twice, then tap "Grant permission": Health Connect's settings open rather than nothing happening.
+- [ ] Grant the permission **inside Health Connect's own settings** and return to the app within a couple of seconds: the section stops saying "Permission needed" immediately, rather than only after several seconds. (This is the resume-refresh path — a slow return would pass even if it were broken.)
 - [ ] On a device with no Health Connect, the settings section is absent entirely.
