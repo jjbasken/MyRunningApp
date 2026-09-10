@@ -59,9 +59,35 @@ class RunRepository @Inject constructor(
 
     suspend fun getRun(runId: Long): Run? = runDao.getById(runId)?.toDomain()
 
+    /**
+     * Applies an edit to a finished run.
+     *
+     * Builds the new row from the existing one via `copy`, the way
+     * [updateActivityType] does, rather than [RunEntity.fromDomain] — that
+     * factory does not carry `healthSyncState`, so building from [Run] alone
+     * would silently reset a synced run to `NOT_SYNCED` in the database while it
+     * is still present in Health Connect, orphaning it on a later delete. Any
+     * edit can change a published field, so it is also re-queued for a rewrite.
+     */
     suspend fun updateRun(run: Run) {
-        if (runDao.getById(run.id)?.isInProgress != false) return
-        runDao.update(RunEntity.fromDomain(run))
+        val existing = runDao.getById(run.id) ?: return
+        if (existing.isInProgress) return
+        runDao.update(
+            existing.copy(
+                startedAt = run.startedAt,
+                endedAt = run.endedAt,
+                activityType = run.activityType,
+                distanceMeters = run.distanceMeters,
+                movingDurationSec = run.movingDurationSec,
+                elapsedDurationSec = run.elapsedDurationSec,
+                avgPaceSecPerMile = run.avgPaceSecPerMile,
+                calories = run.calories,
+                weightKgAtRun = run.weightKgAtRun,
+                wasRecovered = run.wasRecovered,
+            ),
+        )
+        healthSyncDao.markState(run.id, HealthSyncState.PENDING)
+        healthSyncScheduler.requestSync()
     }
 
     /**
@@ -91,13 +117,19 @@ class RunRepository @Inject constructor(
     /**
      * Deletes a run; its points and splits go with it via `ON DELETE CASCADE`.
      *
-     * A run that reached Health Connect leaves a deletion behind in the outbox,
-     * because the row that would otherwise have remembered it is about to be
-     * gone. A run that never got there needs no such note.
+     * A run that reached Health Connect — or that *may* have, because the
+     * process died between the write succeeding and the row being marked
+     * `SYNCED` — leaves a deletion behind in the outbox, because the row that
+     * would otherwise have remembered it is about to be gone. Queuing on every
+     * state but `NOT_SYNCED` is deliberately broader than "was `SYNCED`": the
+     * engine already treats a delete of a client id that was never written as
+     * harmless (a `Rejected` delete just stops asking), so over-queuing costs
+     * nothing, while under-queuing orphans a workout with no record it existed.
+     * A run that never got queued at all needs no such note.
      */
     suspend fun deleteRun(runId: Long) {
         val existing = runDao.getById(runId) ?: return
-        if (existing.healthSyncState == HealthSyncState.SYNCED) {
+        if (existing.healthSyncState != HealthSyncState.NOT_SYNCED) {
             healthSyncDao.queueDeletion(
                 HealthDeletionEntity(runId = runId, requestedAt = clock.instant()),
             )
