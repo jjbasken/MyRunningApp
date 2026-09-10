@@ -16,6 +16,14 @@ data class AppPreferences(
      */
     val backgroundLocationAsked: Boolean = false,
     val backgroundWarningDismissed: Boolean = false,
+    /** Health Connect sync. Opt-in: the app is complete without it. */
+    val healthSyncEnabled: Boolean = false,
+    /**
+     * Remembered flow state, like [backgroundLocationAsked]: Health Connect stops
+     * showing its permission dialog after two declines, so once the ask is spent
+     * the app must link into Health Connect's settings instead.
+     */
+    val healthPermissionAsked: Boolean = false,
 ) {
     companion object {
         val DEFAULT = AppPreferences()
