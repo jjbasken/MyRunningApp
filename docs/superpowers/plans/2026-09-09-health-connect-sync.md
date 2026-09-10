@@ -3071,10 +3071,60 @@ and the field:
     val healthSync: HealthSyncUiState = HealthSyncUiState.Hidden,
 ```
 
-In `ProfileViewModel.kt`, inject `HealthConnectGateway`, `HealthSyncDao`,
-`HealthSyncScheduler` and the existing `PreferencesRepository`, and combine the
-counts, preferences and gateway state into `healthSync` using
-`HealthSyncStatus.of(...)`. Add:
+In `ProfileViewModel.kt`, add `HealthConnectGateway`, `HealthSyncDao` and
+`HealthSyncScheduler` to the constructor alongside the existing
+`profileRepository`, `preferencesRepository` and `exporter`.
+
+The gateway's permission checks are suspend functions, and `combine`'s transform
+is a suspend lambda, so they can be called directly inside it:
+
+```kotlin
+    /**
+     * Bumped to re-read permission state. Permission is granted outside this app,
+     * in Health Connect's own UI, so nothing else would re-emit when the user
+     * comes back.
+     */
+    private val healthRefresh = MutableStateFlow(0)
+
+    private val healthSync: Flow<HealthSyncUiState> = combine(
+        preferencesRepository.preferences,
+        healthSyncDao.observeCounts(),
+        healthRefresh,
+    ) { prefs, counts, _ ->
+        HealthSyncStatus.of(
+            availability = gateway.availability(),
+            enabled = prefs.healthSyncEnabled,
+            writePermissionsGranted = gateway.hasWritePermissions(),
+            counts = counts,
+        )
+    }
+```
+
+Then add `healthSync` as a fourth flow to the existing `uiState` combine — Kotlin
+has a typed `combine` overload up to five flows — and set the new field:
+
+```kotlin
+    val uiState: StateFlow<ProfileUiState> = combine(
+        profileRepository.profile,
+        profileRepository.hasSavedProfile,
+        preferencesRepository.preferences,
+        healthSync,
+    ) { profile, hasSaved, prefs, health ->
+        ProfileUiState(
+            loading = false,
+            profile = profile,
+            hasSavedProfile = hasSaved,
+            preferences = prefs,
+            healthSync = health,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = ProfileUiState(),
+    )
+```
+
+Add:
 
 ```kotlin
     /** What to hand the Health Connect permission contract. */
@@ -3091,18 +3141,25 @@ counts, preferences and gateway state into `healthSync` using
 
     fun onHealthPermissionResult(granted: Set<String>) = viewModelScope.launch {
         preferencesRepository.setHealthPermissionAsked(true)
+        healthRefresh.value++
         if (granted.containsAll(HealthPermissions.WRITE)) healthSyncScheduler.requestSync()
     }
 
     fun syncNow() = viewModelScope.launch {
         healthSyncDao.retryFailed()
+        healthRefresh.value++
         healthSyncScheduler.requestSync()
     }
 ```
 
-Follow the file's existing `combine`/`stateIn` pattern for exposing `uiState`;
-gateway permission reads are suspend calls, so fold them in with a `flow { }` that
-re-reads on each emission of the preferences flow.
+New imports needed: `kotlinx.coroutines.flow.Flow`, `com.myrunningapp.data.db.dao.HealthSyncDao`,
+`com.myrunningapp.data.health.HealthConnectGateway`,
+`com.myrunningapp.data.health.HealthPermissions`,
+`com.myrunningapp.data.health.HealthSyncScheduler`,
+`com.myrunningapp.domain.health.HealthSyncStatus`,
+`com.myrunningapp.domain.health.HealthSyncUiState`. `MutableStateFlow`,
+`StateFlow`, `combine`, `stateIn`, `SharingStarted` and `viewModelScope` are
+already imported.
 
 - [ ] **Step 7: Add the section to the screen**
 
