@@ -12,6 +12,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.myrunningapp.R
@@ -93,20 +94,20 @@ fun HealthSyncSection(
             }
 
             is HealthSyncUiState.Working -> Text(
-                text = stringResource(R.string.health_waiting, state.pending),
+                text = pluralStringResource(R.plurals.health_waiting, state.pending, state.pending),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )
 
             is HealthSyncUiState.UpToDate -> Text(
-                text = stringResource(R.string.health_synced, state.synced),
+                text = pluralStringResource(R.plurals.health_synced, state.synced, state.synced),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )
 
             is HealthSyncUiState.Failed -> {
                 Text(
-                    text = stringResource(R.string.health_failed, state.failed),
+                    text = pluralStringResource(R.plurals.health_failed, state.failed, state.failed),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 8.dp),

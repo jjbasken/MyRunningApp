@@ -125,12 +125,21 @@
     <string name="health_toggle">Sync workouts to Health Connect</string>
     <string name="health_explainer">Publishes each finished run so other apps can read it. Nothing leaves your phone.</string>
     <string name="health_off_note">Workouts already written stay in Health Connect. Remove them there.</string>
-    <string name="health_synced">Synced %1$d runs</string>
-    <string name="health_waiting">%1$d waiting</string>
     <string name="health_needs_permission">Permission needed</string>
     <string name="health_grant">Grant permission</string>
     <string name="health_open_settings">Open Health Connect</string>
     <string name="health_update_required">Update Health Connect to sync workouts</string>
-    <string name="health_failed">%1$d runs could not be written</string>
     <string name="health_sync_now">Sync now</string>
+    <plurals name="health_synced">
+        <item quantity="one">Synced %1$d run</item>
+        <item quantity="other">Synced %1$d runs</item>
+    </plurals>
+    <plurals name="health_waiting">
+        <item quantity="one">%1$d waiting</item>
+        <item quantity="other">%1$d waiting</item>
+    </plurals>
+    <plurals name="health_failed">
+        <item quantity="one">%1$d run could not be written</item>
+        <item quantity="other">%1$d runs could not be written</item>
+    </plurals>
 </resources>

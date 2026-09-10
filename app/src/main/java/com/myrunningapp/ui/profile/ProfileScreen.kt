@@ -1,5 +1,6 @@
 package com.myrunningapp.ui.profile
 
+import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
@@ -45,10 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
 import com.myrunningapp.data.export.RunExporter
 import com.myrunningapp.domain.Units
+import com.myrunningapp.domain.health.HealthSyncUiState
 import com.myrunningapp.domain.model.CountdownLength
 import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.ui.export.DocumentExportEffect
@@ -68,6 +71,13 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
     val healthPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { granted -> viewModel.onHealthPermissionResult(granted) }
+
+    // Re-read on every resume: a trip to Health Connect's own settings changes
+    // permission state without ever calling back into a launcher.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshHealthState()
+        onPauseOrDispose { }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
@@ -114,18 +124,25 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
             // Android stops showing the dialog after two declines; once the ask is
             // spent, Health Connect's own settings are the only way through.
             if (state.preferences.healthPermissionAsked) {
-                context.startActivity(
-                    Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS),
-                )
+                openHealthConnectSettings(context)
             } else {
                 healthPermissionLauncher.launch(viewModel.healthPermissionsToRequest)
             }
         },
         onHealthSyncNow = viewModel::syncNow,
-        onOpenHealthConnect = {
-            context.startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
-        },
+        onOpenHealthConnect = { openHealthConnectSettings(context) },
     )
+}
+
+/**
+ * Opens Health Connect's own settings screen. A stale or old provider may not
+ * export this action — falling back to doing nothing beats crashing the app
+ * from a settings link.
+ */
+private fun openHealthConnectSettings(context: Context) {
+    runCatching {
+        context.startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -259,7 +276,7 @@ private fun ProfileContent(
 
             HealthSyncSection(
                 state = state.healthSync,
-                enabled = state.preferences.healthSyncEnabled,
+                enabled = state.healthSync !is HealthSyncUiState.Off,
                 onToggle = onHealthToggle,
                 onRequestPermission = onHealthRequestPermission,
                 onSyncNow = onHealthSyncNow,

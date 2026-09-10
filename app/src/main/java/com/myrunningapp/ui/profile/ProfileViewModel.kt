@@ -47,6 +47,9 @@ class ProfileViewModel @Inject constructor(
      */
     private val healthRefresh = MutableStateFlow(0)
 
+    /** What to hand the Health Connect permission contract. */
+    val healthPermissionsToRequest: Set<String> = HealthPermissions.ALL
+
     private val healthSync: Flow<HealthSyncUiState> = combine(
         preferencesRepository.preferences,
         healthSyncDao.observeCounts(),
@@ -149,9 +152,6 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.setColorRouteByPace(enabled) }
     }
 
-    /** What to hand the Health Connect permission contract. */
-    val healthPermissionsToRequest: Set<String> = HealthPermissions.ALL
-
     fun setHealthSyncEnabled(enabled: Boolean) = viewModelScope.launch {
         preferencesRepository.setHealthSyncEnabled(enabled)
         if (enabled) {
@@ -171,6 +171,15 @@ class ProfileViewModel @Inject constructor(
         healthSyncDao.retryFailed()
         healthRefresh.value++
         healthSyncScheduler.requestSync()
+    }
+
+    /**
+     * Re-reads permission state. Health Connect's own settings screen grants (or
+     * revokes) permission without ever calling back into a launcher, so this is
+     * the only way the app finds out the user came back with a different grant.
+     */
+    fun refreshHealthState() {
+        healthRefresh.value++
     }
 
     sealed interface ProfileEvent {
