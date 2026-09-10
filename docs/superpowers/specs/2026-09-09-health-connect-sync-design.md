@@ -212,9 +212,10 @@ nothing is transmitted, no account, no analytics, no ads, no third-party sharing
 It covers what the app writes into Health Connect, notes that data is then
 governed by Google's terms and the user's choices in that app, and explains
 deletion (delete the run; uninstall; Health Connect's own controls). Play requires
-it at a **public URL** — GitHub Pages off this repo is the zero-cost option. The
-contact address is left as a placeholder for the user to fill rather than putting
-a personal email into a public document.
+it at a **public URL**. **Written and published 2026-09-09:** the source lives at
+`docs/privacy-policy.md`, and a standalone page is served from the `gh-pages`
+branch at <https://jjbasken.github.io/MyRunningApp/>. Contact is the repository's
+issue tracker rather than an email address.
 
 **`docs/play-health-declaration.md`** — a worksheet, since the declaration itself
 is a form in the Play Console: each permission requested, the user-facing
