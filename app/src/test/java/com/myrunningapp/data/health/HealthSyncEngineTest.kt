@@ -10,6 +10,7 @@ import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.domain.health.HealthAvailability
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncCounts
 import com.myrunningapp.domain.model.HealthSyncState
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -207,12 +208,54 @@ class HealthSyncEngineTest {
     }
 
     @Test
-    fun `a run with nothing in it is marked failed rather than retried forever`() = runTest {
+    fun `a run with nothing in it is marked not applicable rather than a permanent failure`() = runTest {
         val id = pendingRun(distanceMeters = 0.0)
+
+        assertEquals(HealthSyncOutcome.COMPLETED, engine.sync())
+
+        assertEquals(HealthSyncState.NOT_APPLICABLE, stateOf(id))
+        assertTrue(gateway.written.isEmpty())
+    }
+
+    @Test
+    fun `not-applicable runs do not count as failed and Sync now cannot resurrect them`() = runTest {
+        pendingRun(distanceMeters = 0.0)
 
         engine.sync()
 
-        assertEquals(HealthSyncState.FAILED, stateOf(id))
-        assertTrue(gateway.written.isEmpty())
+        var counts: HealthSyncCounts? = null
+        healthSyncDao.observeCounts().collect { counts = it }
+        assertEquals(0, counts!!.failed)
+        assertEquals(0, counts!!.pending)
+        // retryFailed's WHERE clause only matches FAILED — a not-applicable run
+        // must not be promoted back to PENDING by "Sync now".
+        assertEquals(0, healthSyncDao.retryFailed())
+    }
+
+    @Test
+    fun `a backfill of more than one page fully drains rather than stopping at the first page`() = runTest {
+        val ids = (1L..120L).map { pendingRun(id = it) }
+
+        assertEquals(HealthSyncOutcome.COMPLETED, engine.sync())
+
+        assertEquals(120, gateway.written.size)
+        ids.forEach { assertEquals(HealthSyncState.SYNCED, stateOf(it)) }
+    }
+
+    @Test
+    fun `a full page that makes no progress stops rather than looping forever`() = runTest {
+        // 51 pending runs (more than one page), every write Retryable: nothing
+        // ever leaves PENDING, so a naive re-fetch of the same full page would
+        // spin. The loop must stop after the first page once it sees the page
+        // made no progress, and report RETRY_LATER for the worker's own backoff.
+        val ids = (1L..51L).map { pendingRun(id = it) }
+        ids.forEach { _ -> gateway.writeResults.addLast(HealthWriteResult.Retryable) }
+
+        assertEquals(HealthSyncOutcome.RETRY_LATER, engine.sync())
+
+        ids.forEach { assertEquals(HealthSyncState.PENDING, stateOf(it)) }
+        // Only the first (50-run) page was attempted; the 51st queued result
+        // for the run the loop never reached is still sitting unconsumed.
+        assertEquals(1, gateway.writeResults.size)
     }
 }

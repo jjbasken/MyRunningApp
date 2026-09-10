@@ -1,5 +1,6 @@
 package com.myrunningapp.data.health
 
+import android.util.Log
 import com.myrunningapp.data.db.dao.HealthSyncDao
 import com.myrunningapp.data.db.dao.RunPointDao
 import com.myrunningapp.data.db.dao.SplitDao
@@ -50,6 +51,11 @@ class HealthSyncEngine @Inject constructor(
 ) {
 
     suspend fun sync(): HealthSyncOutcome {
+        // Deletions queued while sync is off are deliberately left sitting in
+        // health_deletions until sync is re-enabled: "off leaves already-written
+        // data alone" means Health Connect is not touched at all while off, not
+        // just that writes are skipped. Not a bug — this is why deletions are
+        // drained below rather than before this check.
         if (!syncEnabled()) return HealthSyncOutcome.DISABLED
         if (gateway.availability() != HealthAvailability.AVAILABLE) {
             return HealthSyncOutcome.UNAVAILABLE
@@ -72,22 +78,50 @@ class HealthSyncEngine @Inject constructor(
 
         val includeRoute = gateway.hasRoutePermission()
 
-        for (run in healthSyncDao.pendingRuns()) {
-            val workout = buildWorkout(run, includeRoute)
-            if (workout == null) {
-                // Nothing to publish and nothing time will fix.
-                healthSyncDao.markState(run.id, HealthSyncState.FAILED)
-                continue
+        // `pendingRuns()` returns one LIMIT-sized page at a time (oldest first), so
+        // a backfill of hundreds of runs has to be drained page by page rather than
+        // in one pass. Loop until a page comes back short of a full page (the last
+        // page), returning immediately on PERMISSION_MISSING exactly as before.
+        //
+        // Termination: each page is re-queried fresh, so if any row in a full page
+        // leaves PENDING (SYNCED, FAILED or NOT_APPLICABLE) the next query returns a
+        // different set and the total PENDING count has strictly decreased — the
+        // loop can run at most `pendingCount` times. If a full page makes *no*
+        // progress (every row stayed PENDING via Retryable), the next query would
+        // return the exact same page again, so that case stops the loop instead of
+        // re-fetching — `retryLater` is already set and the worker's backoff covers
+        // it on the next run.
+        while (true) {
+            val page = healthSyncDao.pendingRuns(PAGE_SIZE)
+            var progressed = false
+
+            for (run in page) {
+                val workout = buildWorkout(run, includeRoute)
+                if (workout == null) {
+                    // Nothing to publish and nothing time will fix — but this is not
+                    // the same as a rejection, so it must not read as "could not be
+                    // written" and must not be retryable via Sync now.
+                    healthSyncDao.markState(run.id, HealthSyncState.NOT_APPLICABLE)
+                    progressed = true
+                    continue
+                }
+                when (val result = gateway.write(workout)) {
+                    is HealthWriteResult.Success -> {
+                        healthSyncDao.markState(run.id, HealthSyncState.SYNCED)
+                        progressed = true
+                    }
+                    is HealthWriteResult.PermissionMissing ->
+                        return HealthSyncOutcome.PERMISSION_MISSING
+                    is HealthWriteResult.Retryable -> retryLater = true
+                    is HealthWriteResult.Rejected -> {
+                        Log.w(TAG, "Run ${run.id} rejected by Health Connect: ${result.reason}")
+                        healthSyncDao.markState(run.id, HealthSyncState.FAILED)
+                        progressed = true
+                    }
+                }
             }
-            when (gateway.write(workout)) {
-                is HealthWriteResult.Success ->
-                    healthSyncDao.markState(run.id, HealthSyncState.SYNCED)
-                is HealthWriteResult.PermissionMissing ->
-                    return HealthSyncOutcome.PERMISSION_MISSING
-                is HealthWriteResult.Retryable -> retryLater = true
-                is HealthWriteResult.Rejected ->
-                    healthSyncDao.markState(run.id, HealthSyncState.FAILED)
-            }
+
+            if (page.size < PAGE_SIZE || !progressed) break
         }
 
         return if (retryLater) HealthSyncOutcome.RETRY_LATER else HealthSyncOutcome.COMPLETED
@@ -100,4 +134,12 @@ class HealthSyncEngine @Inject constructor(
             points = runPointDao.getForRun(run.id).map { it.toDomain() },
             includeRoute = includeRoute,
         )
+
+    private companion object {
+        const val TAG = "HealthSyncEngine"
+
+        /** Matches [HealthSyncDao.pendingRuns]'s own default; kept explicit here so
+         *  the "was this page full" check does not depend on that default staying 50. */
+        const val PAGE_SIZE = 50
+    }
 }

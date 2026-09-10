@@ -17,4 +17,12 @@ enum class HealthSyncState {
      * *not* this — that leaves the row pending.
      */
     FAILED,
+
+    /**
+     * There is nothing publishable here — e.g. GPS never got a fix, so the run
+     * has no distance. Not [FAILED]: retrying will never change the outcome, so
+     * it is deliberately excluded from the settings screen's counts and from
+     * `retryFailed`'s query, rather than becoming a permanent, unclearable error.
+     */
+    NOT_APPLICABLE,
 }
