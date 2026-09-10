@@ -17,6 +17,7 @@ import com.myrunningapp.domain.model.CountdownLength
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -61,7 +63,7 @@ class ProfileViewModel @Inject constructor(
             writePermissionsGranted = gateway.hasWritePermissions(),
             counts = counts,
         )
-    }
+    }.flowOn(Dispatchers.IO)
 
     val uiState: StateFlow<ProfileUiState> = combine(
         profileRepository.profile,
