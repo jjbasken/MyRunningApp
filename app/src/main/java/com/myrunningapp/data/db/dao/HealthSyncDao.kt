@@ -36,7 +36,7 @@ interface HealthSyncDao {
     )
     suspend fun markAllPending(): Int
 
-    @Query("UPDATE runs SET healthSyncState = 'PENDING' WHERE healthSyncState = 'FAILED'")
+    @Query("UPDATE runs SET healthSyncState = 'PENDING' WHERE healthSyncState = 'FAILED' AND isInProgress = 0")
     suspend fun retryFailed(): Int
 
     /** Replaces on conflict: a second delete request for the same run is the same request. */

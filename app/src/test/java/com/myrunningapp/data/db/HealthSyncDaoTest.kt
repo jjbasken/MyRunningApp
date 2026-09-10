@@ -117,7 +117,9 @@ class HealthSyncDaoTest {
         db.healthSyncDao().queueDeletion(HealthDeletionEntity(runId = 7, requestedAt = t0))
         db.healthSyncDao().queueDeletion(HealthDeletionEntity(runId = 7, requestedAt = t0.plusSeconds(5)))
 
-        assertEquals(1, db.healthSyncDao().pendingDeletions().size)
+        val deletions = db.healthSyncDao().pendingDeletions()
+        assertEquals(1, deletions.size)
+        assertEquals(t0.plusSeconds(5), deletions[0].requestedAt)
     }
 
     @Test
@@ -147,5 +149,26 @@ class HealthSyncDaoTest {
         assertEquals(1, counts.pending)
         assertEquals(2, counts.synced)
         assertEquals(1, counts.failed)
+    }
+
+    @Test
+    fun `an in-progress run is not counted in any sync state`() = runTest {
+        insertRun(HealthSyncState.PENDING, inProgress = true)
+        insertRun(HealthSyncState.SYNCED, inProgress = true)
+        insertRun(HealthSyncState.FAILED, inProgress = true)
+
+        val counts = db.healthSyncDao().observeCounts().first()
+
+        assertEquals(0, counts.pending)
+        assertEquals(0, counts.synced)
+        assertEquals(0, counts.failed)
+    }
+
+    @Test
+    fun `an in-progress failed run is not promoted by retryFailed`() = runTest {
+        insertRun(HealthSyncState.FAILED, inProgress = true)
+
+        assertEquals(0, db.healthSyncDao().retryFailed())
+        assertTrue(db.healthSyncDao().pendingRuns().isEmpty())
     }
 }
