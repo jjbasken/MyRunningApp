@@ -565,6 +565,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncCounts
 import com.myrunningapp.domain.model.HealthSyncState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -685,6 +686,13 @@ class HealthSyncDaoTest {
 
         assertEquals(1, db.healthSyncDao().retryFailed())
         assertEquals(1, db.healthSyncDao().pendingRuns().size)
+    }
+
+    @Test
+    fun `counts are zero when there are no runs at all`() = runTest {
+        // SUM over no rows is NULL in SQLite, which Room cannot read into a
+        // non-null Int: the query has to COALESCE.
+        assertEquals(HealthSyncCounts(0, 0, 0), db.healthSyncDao().observeCounts().first())
     }
 
     @Test
@@ -827,9 +835,9 @@ interface HealthSyncDao {
     @Query(
         """
         SELECT
-            SUM(healthSyncState = 'PENDING') AS pending,
-            SUM(healthSyncState = 'SYNCED') AS synced,
-            SUM(healthSyncState = 'FAILED') AS failed
+            COALESCE(SUM(healthSyncState = 'PENDING'), 0) AS pending,
+            COALESCE(SUM(healthSyncState = 'SYNCED'), 0) AS synced,
+            COALESCE(SUM(healthSyncState = 'FAILED'), 0) AS failed
         FROM runs WHERE isInProgress = 0
         """,
     )
@@ -897,7 +905,7 @@ change `.addMigrations(AppDatabase.MIGRATION_1_2)` to
 - [ ] **Step 6: Run the DAO tests**
 
 Run: `./gradlew testDebugUnitTest --tests '*HealthSyncDaoTest*'`
-Expected: PASS (10 tests). The exported schema `app/schemas/com.myrunningapp.data.db.AppDatabase/3.json` appears; it is checked in.
+Expected: PASS (11 tests). The exported schema `app/schemas/com.myrunningapp.data.db.AppDatabase/3.json` appears; it is checked in.
 
 - [ ] **Step 7: Write the failing migration test**
 
