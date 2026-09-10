@@ -128,7 +128,7 @@ class AppDatabaseTest {
     @Test
     fun `active run is hidden and cannot be deleted`() = runTest {
         val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-            ProfileRepository(db.profileDao()))
+            ProfileRepository(db.profileDao()), db.healthSyncDao())
         val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
         assertTrue(db.runDao().observeAll().first().isEmpty())
         repository.deleteRun(id)
@@ -151,7 +151,7 @@ class AppDatabaseTest {
         try {
             db = open()
             val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-                ProfileRepository(db.profileDao()))
+                ProfileRepository(db.profileDao()), db.healthSyncDao())
             val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
             val snapshot = RunSnapshot.idle(ActivityType.RUN).copy(
                 state = RunSessionState.PAUSED, startedAt = Instant.EPOCH,
@@ -187,7 +187,7 @@ class AppDatabaseTest {
     @Test
     fun `failed checkpoint rolls back points splits and summary`() = runTest {
         val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-            ProfileRepository(db.profileDao()))
+            ProfileRepository(db.profileDao()), db.healthSyncDao())
         val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
         val run = db.runDao().getById(id)!!
         val point = RunPointEntity(id = 1, runId = id, timestamp = Instant.EPOCH,

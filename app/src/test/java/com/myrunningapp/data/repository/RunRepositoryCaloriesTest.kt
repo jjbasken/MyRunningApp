@@ -1,15 +1,19 @@
 package com.myrunningapp.data.repository
 
+import com.myrunningapp.data.db.dao.HealthSyncDao
 import com.myrunningapp.data.db.dao.ProfileDao
 import com.myrunningapp.data.db.dao.RunDao
 import com.myrunningapp.data.db.dao.RunPointDao
 import com.myrunningapp.data.db.dao.SplitDao
+import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.ProfileEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.domain.calories.CalorieCalculator
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncCounts
+import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.domain.tracking.RunSnapshot
@@ -40,6 +44,7 @@ class RunRepositoryCaloriesTest {
         runPointDao = FakeRunPointDao(),
         splitDao = FakeSplitDao(),
         profileRepository = ProfileRepository(FakeProfileDao(currentProfile)),
+        healthSyncDao = FakeHealthSyncDao(runDao),
     )
 
     private fun snapshot(distanceMeters: Double, movingDurationSec: Long) = RunSnapshot(
@@ -159,5 +164,35 @@ class RunRepositoryCaloriesTest {
         override fun observe(): Flow<ProfileEntity?> = flowOf(ProfileEntity.fromDomain(profile))
         override suspend fun get(): ProfileEntity = ProfileEntity.fromDomain(profile)
         override suspend fun upsert(profile: ProfileEntity) = Unit
+    }
+
+    /** Not this test's concern — calorie math is — so it just has to compile and not lie. */
+    private class FakeHealthSyncDao(private val runDao: FakeRunDao) : HealthSyncDao {
+        private val deletions = mutableMapOf<Long, HealthDeletionEntity>()
+
+        override suspend fun pendingRuns(limit: Int): List<RunEntity> =
+            runDao.rows.values
+                .filter { it.healthSyncState == HealthSyncState.PENDING && !it.isInProgress }
+                .sortedBy { it.startedAt }
+                .take(limit)
+
+        override suspend fun markState(runId: Long, state: HealthSyncState) {
+            runDao.rows[runId]?.let { runDao.rows[runId] = it.copy(healthSyncState = state) }
+        }
+
+        override suspend fun markAllPending(): Int = 0
+        override suspend fun retryFailed(): Int = 0
+
+        override suspend fun queueDeletion(deletion: HealthDeletionEntity) {
+            deletions[deletion.runId] = deletion
+        }
+
+        override suspend fun pendingDeletions(): List<HealthDeletionEntity> =
+            deletions.values.sortedBy { it.requestedAt }
+
+        override suspend fun clearDeletion(runId: Long) { deletions.remove(runId) }
+
+        override fun observeCounts(): Flow<HealthSyncCounts> =
+            flowOf(HealthSyncCounts(pending = 0, synced = 0, failed = 0))
     }
 }

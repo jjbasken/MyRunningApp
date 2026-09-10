@@ -1,8 +1,10 @@
 package com.myrunningapp.data.repository
 
+import com.myrunningapp.data.db.dao.HealthSyncDao
 import com.myrunningapp.data.db.dao.RunDao
 import com.myrunningapp.data.db.dao.RunPointDao
 import com.myrunningapp.data.db.dao.SplitDao
+import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
@@ -10,6 +12,7 @@ import com.myrunningapp.data.location.RunRecorder
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.calories.CalorieCalculator
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.model.RunPoint
@@ -19,6 +22,7 @@ import com.myrunningapp.domain.tracking.RunSnapshot
 import com.myrunningapp.domain.tracking.TrackedPoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.Clock
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,6 +40,8 @@ class RunRepository @Inject constructor(
     private val runPointDao: RunPointDao,
     private val splitDao: SplitDao,
     private val profileRepository: ProfileRepository,
+    private val healthSyncDao: HealthSyncDao,
+    private val clock: Clock = Clock.systemUTC(),
 ) : RunRecorder {
     val runs: Flow<List<Run>> =
         runDao.observeAll().map { list -> list.map(RunEntity::toDomain) }
@@ -75,10 +81,26 @@ class RunRepository @Inject constructor(
                 ),
             ),
         )
+        // The label and the published workout must agree, so a correction is a rewrite.
+        healthSyncDao.markState(runId, HealthSyncState.PENDING)
     }
 
-    /** Deletes a run; its points and splits go with it via `ON DELETE CASCADE`. */
-    suspend fun deleteRun(runId: Long) = runDao.deleteById(runId)
+    /**
+     * Deletes a run; its points and splits go with it via `ON DELETE CASCADE`.
+     *
+     * A run that reached Health Connect leaves a deletion behind in the outbox,
+     * because the row that would otherwise have remembered it is about to be
+     * gone. A run that never got there needs no such note.
+     */
+    suspend fun deleteRun(runId: Long) {
+        val existing = runDao.getById(runId) ?: return
+        if (existing.healthSyncState == HealthSyncState.SYNCED) {
+            healthSyncDao.queueDeletion(
+                HealthDeletionEntity(runId = runId, requestedAt = clock.instant()),
+            )
+        }
+        runDao.deleteById(runId)
+    }
 
     // --- RunRecorder: the tracking service's write path -----------------------
 
@@ -202,6 +224,9 @@ class RunRepository @Inject constructor(
                 ),
             ),
         )
+        // The run is only worth publishing once it is complete, so the outbox is
+        // marked here rather than at startRun.
+        healthSyncDao.markState(runId, HealthSyncState.PENDING)
     }
 
     /**
