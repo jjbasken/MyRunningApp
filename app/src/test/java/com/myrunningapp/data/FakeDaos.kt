@@ -46,6 +46,8 @@ internal class FakeRunDao : RunDao {
         if (rows[runId]?.isInProgress == false) rows.remove(runId)
     }
 
+    // Crash-recovery checkpointing isn't exercised by the tests that use this fake; these
+    // three are no-ops purely so FakeRunDao compiles as a RunDao.
     override suspend fun insertCheckpointPoints(points: List<RunPointEntity>) = Unit
     override suspend fun insertCheckpointSplits(splits: List<SplitEntity>) = Unit
     override suspend fun clearCheckpointSplits(runId: Long) = Unit
@@ -80,6 +82,7 @@ internal class FakeSplitDao : SplitDao {
 internal class FakeProfileDao(private val profile: Profile) : ProfileDao {
     override fun observe(): Flow<ProfileEntity?> = flowOf(ProfileEntity.fromDomain(profile))
     override suspend fun get(): ProfileEntity = ProfileEntity.fromDomain(profile)
+    // No test using this fake writes a profile back; it's a no-op so FakeProfileDao compiles.
     override suspend fun upsert(profile: ProfileEntity) = Unit
 }
 
@@ -103,7 +106,7 @@ internal class FakeHealthSyncDao(private val runDao: FakeRunDao) : HealthSyncDao
 
     private fun mark(from: HealthSyncState): Int {
         val hits = runDao.rows.values.filter {
-            it.healthSyncState == from && (from == HealthSyncState.FAILED || !it.isInProgress)
+            it.healthSyncState == from && !it.isInProgress
         }
         hits.forEach { runDao.rows[it.id] = it.copy(healthSyncState = HealthSyncState.PENDING) }
         return hits.size

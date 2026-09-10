@@ -113,4 +113,24 @@ class RunRepositoryHealthSyncTest {
 
         assertTrue(healthSyncDao.pendingDeletions().isEmpty())
     }
+
+    @Test
+    fun `retryFailed does not promote a FAILED run that is still in progress`() = runTest {
+        // The real query is `WHERE healthSyncState = 'FAILED' AND isInProgress = 0` —
+        // an in-progress run must never be picked up here, no matter its sync state.
+        val finishedId = finishedRun()
+        healthSyncDao.markState(finishedId, HealthSyncState.FAILED)
+
+        val inProgressId = repository.startRun(ActivityType.RUN, t0, weightKg = 70.0)
+        runDao.rows[inProgressId] = runDao.rows[inProgressId]!!.copy(
+            healthSyncState = HealthSyncState.FAILED,
+        )
+        assertTrue(runDao.rows[inProgressId]!!.isInProgress)
+
+        val promoted = healthSyncDao.retryFailed()
+
+        assertEquals(1, promoted)
+        assertEquals(HealthSyncState.PENDING, runDao.rows[finishedId]!!.healthSyncState)
+        assertEquals(HealthSyncState.FAILED, runDao.rows[inProgressId]!!.healthSyncState)
+    }
 }
