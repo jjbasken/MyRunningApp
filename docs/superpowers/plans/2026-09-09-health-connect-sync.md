@@ -6,7 +6,7 @@
 
 **Architecture:** A Room outbox (`runs.healthSyncState` plus a `health_deletions` table) records what needs writing; a WorkManager worker drains it through a `HealthConnectGateway` interface. Every record is written with `clientRecordId = "run-<id>"`, so Health Connect treats a repeat write as an update and accepts deletes by client id — no Health Connect uids are stored and retries cannot duplicate a workout. Each Android-facing piece has a pure decision pulled out of it (`WorkoutRecordBuilder`, `HealthTimeline`, `HealthSyncStatus`), which is where the tests live.
 
-**Tech Stack:** Kotlin, Jetpack Compose, Hilt, Room, Coroutines/Flow, `androidx.health.connect:connect-client`, `androidx.work` (both new to this project). Tests: JUnit4, Robolectric, coroutines-test, Turbine.
+**Tech Stack:** Kotlin, Jetpack Compose, Hilt, Room, Coroutines/Flow, `androidx.health.connect:connect-client`, `androidx.work` (both new to this project). Tests: JUnit4 and coroutines-test against fake DAOs; Robolectric only for the two tests that need real SQL.
 
 **Spec:** `docs/superpowers/specs/2026-09-09-health-connect-sync-design.md`
 
@@ -19,8 +19,18 @@
 - `clientRecordId` format is exactly `"run-<id>"` (e.g. `run-42`). Nothing else derives ids.
 - New dependency versions: `connect-client 1.1.0`, `work-runtime-ktx 2.10.0`, `androidx.hilt 1.2.0`.
 - Room goes `version = 2` → `version = 3`. The exported schema `app/schemas/.../3.json` is checked in.
-- Existing conventions: Kotlin tests use backticked names, `org.junit.Assert.*`, Robolectric for anything needing a `Context`.
-- Every task ends with a commit. Run `./gradlew testDebugUnitTest` before each commit.
+- Existing conventions: Kotlin tests use backticked names and `org.junit.Assert.*`, and fake the DAOs rather than standing up Room (see `RunRepositoryCaloriesTest`, `RunTrackerTest`).
+- Every task ends with a commit. Run the suite before each commit:
+  `JAVA_HOME=$HOME/toolchain/jdk-17.0.20.1+1 ./gradlew testDebugUnitTest -Pandroid.aapt2FromMavenOverride=<wrapper>`
+  (the controller gives you the wrapper path; Google ships `aapt2` x86_64-only and
+  this box is aarch64). Never pass `--offline`.
+- **Baseline: 198 tests, 7 failing.** All 7 are `AppDatabaseTest`, all
+  `UnsatisfiedLinkError: no conscrypt_openjdk_jni-linux-aarch_64`. Robolectric
+  cannot start a Room database on this machine. This is pre-existing and is not
+  yours to fix — but it means **new tests must not use Robolectric** unless the
+  task says otherwise. Test against fake DAOs, which is this project's existing
+  convention (see `RunRepositoryCaloriesTest`, `RunTrackerTest`).
+- A task is green when its own tests pass and the failure count is still 7.
 
 ---
 
@@ -553,6 +563,15 @@ The sync state column and the deletions table. Nothing writes to them yet.
   - `HealthSyncDao` with: `suspend fun pendingRuns(limit: Int = 50): List<RunEntity>`, `suspend fun markState(runId: Long, state: HealthSyncState)`, `suspend fun queueDeletion(deletion: HealthDeletionEntity)`, `suspend fun pendingDeletions(): List<HealthDeletionEntity>`, `suspend fun clearDeletion(runId: Long)`, `suspend fun markAllPending(): Int`, `fun observeCounts(): Flow<HealthSyncCounts>`, `suspend fun retryFailed(): Int`
   - `AppDatabase.MIGRATION_2_3`
 
+**Environment note for this task only.** `HealthSyncDaoTest` and the migration
+test are testing SQL, so they need a real Room database and therefore Robolectric
+— which cannot start on this machine (see Global Constraints). **Expect both to
+fail here with `UnsatisfiedLinkError: no conscrypt_openjdk_jni-linux-aarch_64`,
+and do not try to fix that.** Write them anyway: they are correct, they run in
+CI and on an x86 machine, and they are the only real check on the SQL. Your
+verification for this task is (a) the code compiles, (b) every new failure is
+that same conscrypt error and nothing else. Report the exact failure messages.
+
 - [ ] **Step 1: Write the failing DAO test**
 
 Create `app/src/test/java/com/myrunningapp/data/db/HealthSyncDaoTest.kt`:
@@ -905,7 +924,9 @@ change `.addMigrations(AppDatabase.MIGRATION_1_2)` to
 - [ ] **Step 6: Run the DAO tests**
 
 Run: `./gradlew testDebugUnitTest --tests '*HealthSyncDaoTest*'`
-Expected: PASS (11 tests). The exported schema `app/schemas/com.myrunningapp.data.db.AppDatabase/3.json` appears; it is checked in.
+Expected on this machine: FAIL, every failure being the conscrypt
+`UnsatisfiedLinkError` described above. Any *other* failure is a real defect and
+is yours to fix. The exported schema `app/schemas/com.myrunningapp.data.db.AppDatabase/3.json` appears; it is checked in.
 
 - [ ] **Step 7: Write the failing migration test**
 
@@ -967,7 +988,9 @@ if it is not already there.
 - [ ] **Step 8: Run the migration test**
 
 Run: `./gradlew testDebugUnitTest --tests '*AppDatabaseTest*'`
-Expected: PASS. If the insert fails on column count, print the v2 `runs` schema
+Expected on this machine: 8 failures, all conscrypt (the 7 pre-existing plus this
+new one). Confirm the message is conscrypt and not a schema error. If the insert
+fails on column count, print the v2 `runs` schema
 from `app/schemas/com.myrunningapp.data.db.AppDatabase/2.json` and match the
 `INSERT` to it exactly — the v2 row is `(id, startedAt, endedAt, activityType,
 distanceMeters, movingDurationSec, elapsedDurationSec, avgPaceSecPerMile,
@@ -976,7 +999,8 @@ calories, weightKgAtRun, isInProgress, wasRecovered)`.
 - [ ] **Step 9: Run the whole suite**
 
 Run: `./gradlew testDebugUnitTest`
-Expected: PASS.
+Expected: 19 failures — the 7 pre-existing plus the 12 new SQL tests, all
+conscrypt. Nothing else may fail.
 
 - [ ] **Step 10: Commit**
 
@@ -1000,82 +1024,225 @@ publishing.
 
 **Files:**
 - Modify: `app/src/main/java/com/myrunningapp/data/repository/RunRepository.kt`
+- Create: `app/src/test/java/com/myrunningapp/data/FakeDaos.kt`
 - Test: `app/src/test/java/com/myrunningapp/data/repository/RunRepositoryHealthSyncTest.kt`
 
 **Interfaces:**
 - Consumes: `HealthSyncDao`, `HealthDeletionEntity`, `HealthSyncState` (Task 2).
+- Produces: `internal` fakes in package `com.myrunningapp.data` — `FakeRunDao`
+  (exposes `rows`), `FakeRunPointDao` (`rows`), `FakeSplitDao` (`rows`),
+  `FakeProfileDao`, `FakeHealthSyncDao(runDao)` (`deletions`). Task 5 uses these.
 - Produces: `RunRepository` constructor gains `healthSyncDao: HealthSyncDao` and
   `clock: Clock = Clock.systemUTC()`, in that order, after `profileRepository`.
   Task 7 inserts `healthSyncScheduler` between them, so `clock` stays last; behaviour of
   `finishRun`, `updateActivityType` and `deleteRun` is extended as below.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the shared fakes**
+
+`RunRepositoryCaloriesTest` already fakes the DAOs, but its fakes are `private`
+to that class. Task 5 needs them too, so lift a shared set into its own file.
+
+Create `app/src/test/java/com/myrunningapp/data/FakeDaos.kt`:
+
+```kotlin
+package com.myrunningapp.data
+
+import com.myrunningapp.data.db.dao.HealthSyncDao
+import com.myrunningapp.data.db.dao.ProfileDao
+import com.myrunningapp.data.db.dao.RunDao
+import com.myrunningapp.data.db.dao.RunPointDao
+import com.myrunningapp.data.db.dao.SplitDao
+import com.myrunningapp.data.db.entity.HealthDeletionEntity
+import com.myrunningapp.data.db.entity.ProfileEntity
+import com.myrunningapp.data.db.entity.RunEntity
+import com.myrunningapp.data.db.entity.RunPointEntity
+import com.myrunningapp.data.db.entity.SplitEntity
+import com.myrunningapp.domain.model.HealthSyncCounts
+import com.myrunningapp.domain.model.HealthSyncState
+import com.myrunningapp.domain.model.Profile
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+
+/**
+ * In-memory DAOs shared by the tests that exercise logic sitting on top of Room.
+ *
+ * Room's own behaviour is [com.myrunningapp.data.db.HealthSyncDaoTest]'s job;
+ * these exist so the rules above it can be tested as plain JVM Kotlin, which is
+ * how the rest of this project tests its repositories.
+ */
+internal class FakeRunDao : RunDao {
+    val rows = linkedMapOf<Long, RunEntity>()
+    private var nextId = 1L
+
+    override fun observeAll(): Flow<List<RunEntity>> =
+        flowOf(rows.values.filter { !it.isInProgress })
+
+    override fun observeById(runId: Long): Flow<RunEntity?> = flowOf(rows[runId])
+    override suspend fun getById(runId: Long): RunEntity? = rows[runId]
+
+    override suspend fun insert(run: RunEntity): Long {
+        val id = if (run.id != 0L) run.id else nextId++
+        rows[id] = run.copy(id = id)
+        return id
+    }
+
+    override suspend fun update(run: RunEntity) { rows[run.id] = run }
+    override suspend fun delete(run: RunEntity) { rows.remove(run.id) }
+
+    override suspend fun deleteById(runId: Long) {
+        if (rows[runId]?.isInProgress == false) rows.remove(runId)
+    }
+
+    override suspend fun insertCheckpointPoints(points: List<RunPointEntity>) = Unit
+    override suspend fun insertCheckpointSplits(splits: List<SplitEntity>) = Unit
+    override suspend fun clearCheckpointSplits(runId: Long) = Unit
+}
+
+internal class FakeRunPointDao : RunPointDao {
+    val rows = mutableListOf<RunPointEntity>()
+
+    override fun observeForRun(runId: Long): Flow<List<RunPointEntity>> =
+        flowOf(rows.filter { it.runId == runId })
+
+    override suspend fun getForRun(runId: Long): List<RunPointEntity> =
+        rows.filter { it.runId == runId }
+
+    override suspend fun insert(point: RunPointEntity): Long { rows += point; return 0L }
+    override suspend fun insertAll(points: List<RunPointEntity>) { rows += points }
+    override suspend fun countForRun(runId: Long): Int = rows.count { it.runId == runId }
+}
+
+internal class FakeSplitDao : SplitDao {
+    val rows = mutableListOf<SplitEntity>()
+
+    override fun observeForRun(runId: Long): Flow<List<SplitEntity>> =
+        flowOf(rows.filter { it.runId == runId })
+
+    override suspend fun getForRun(runId: Long): List<SplitEntity> =
+        rows.filter { it.runId == runId }
+
+    override suspend fun insert(split: SplitEntity): Long { rows += split; return 0L }
+}
+
+internal class FakeProfileDao(private val profile: Profile) : ProfileDao {
+    override fun observe(): Flow<ProfileEntity?> = flowOf(ProfileEntity.fromDomain(profile))
+    override suspend fun get(): ProfileEntity = ProfileEntity.fromDomain(profile)
+    override suspend fun upsert(profile: ProfileEntity) = Unit
+}
+
+/** Shares [FakeRunDao]'s rows, so state changes are visible through both. */
+internal class FakeHealthSyncDao(private val runDao: FakeRunDao) : HealthSyncDao {
+    val deletions = linkedMapOf<Long, HealthDeletionEntity>()
+
+    override suspend fun pendingRuns(limit: Int): List<RunEntity> =
+        runDao.rows.values
+            .filter { it.healthSyncState == HealthSyncState.PENDING && !it.isInProgress }
+            .sortedBy { it.startedAt }
+            .take(limit)
+
+    override suspend fun markState(runId: Long, state: HealthSyncState) {
+        runDao.rows[runId]?.let { runDao.rows[runId] = it.copy(healthSyncState = state) }
+    }
+
+    override suspend fun markAllPending(): Int = mark(HealthSyncState.NOT_SYNCED)
+
+    override suspend fun retryFailed(): Int = mark(HealthSyncState.FAILED)
+
+    private fun mark(from: HealthSyncState): Int {
+        val hits = runDao.rows.values.filter {
+            it.healthSyncState == from && (from == HealthSyncState.FAILED || !it.isInProgress)
+        }
+        hits.forEach { runDao.rows[it.id] = it.copy(healthSyncState = HealthSyncState.PENDING) }
+        return hits.size
+    }
+
+    override suspend fun queueDeletion(deletion: HealthDeletionEntity) {
+        deletions[deletion.runId] = deletion
+    }
+
+    override suspend fun pendingDeletions(): List<HealthDeletionEntity> =
+        deletions.values.sortedBy { it.requestedAt }
+
+    override suspend fun clearDeletion(runId: Long) { deletions.remove(runId) }
+
+    override fun observeCounts(): Flow<HealthSyncCounts> = flowOf(
+        runDao.rows.values.filter { !it.isInProgress }.let { finished ->
+            HealthSyncCounts(
+                pending = finished.count { it.healthSyncState == HealthSyncState.PENDING },
+                synced = finished.count { it.healthSyncState == HealthSyncState.SYNCED },
+                failed = finished.count { it.healthSyncState == HealthSyncState.FAILED },
+            )
+        },
+    )
+}
+```
+
+- [ ] **Step 1b: Write the failing test**
 
 Create `app/src/test/java/com/myrunningapp/data/repository/RunRepositoryHealthSyncTest.kt`.
-Follow the setup used by the existing repository tests in
-`app/src/test/java/com/myrunningapp/data/repository/` (Robolectric plus an
-in-memory Room database):
+Plain JUnit — no Robolectric, no Room:
 
 ```kotlin
 package com.myrunningapp.data.repository
 
-import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
-import com.myrunningapp.data.db.AppDatabase
+import com.myrunningapp.data.FakeHealthSyncDao
+import com.myrunningapp.data.FakeProfileDao
+import com.myrunningapp.data.FakeRunDao
+import com.myrunningapp.data.FakeRunPointDao
+import com.myrunningapp.data.FakeSplitDao
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.HealthSyncState
+import com.myrunningapp.domain.model.Profile
+import com.myrunningapp.domain.model.RunSessionState
+import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.domain.tracking.RunSnapshot
 import kotlinx.coroutines.test.runTest
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 
-@RunWith(RobolectricTestRunner::class)
 class RunRepositoryHealthSyncTest {
 
-    private lateinit var db: AppDatabase
-    private lateinit var repository: RunRepository
     private val t0: Instant = Instant.parse("2026-09-09T12:00:00Z")
+    private val runDao = FakeRunDao()
+    private val healthSyncDao = FakeHealthSyncDao(runDao)
 
-    @Before
-    fun setUp() {
-        db = Room.inMemoryDatabaseBuilder(
-            ApplicationProvider.getApplicationContext(),
-            AppDatabase::class.java,
-        ).allowMainThreadQueries().build()
-        repository = RunRepository(
-            runDao = db.runDao(),
-            runPointDao = db.runPointDao(),
-            splitDao = db.splitDao(),
-            profileRepository = ProfileRepository(db.profileDao()),
-            healthSyncDao = db.healthSyncDao(),
-            clock = Clock.fixed(t0, ZoneOffset.UTC),
-        )
-    }
+    private val repository = RunRepository(
+        runDao = runDao,
+        runPointDao = FakeRunPointDao(),
+        splitDao = FakeSplitDao(),
+        profileRepository = ProfileRepository(
+            FakeProfileDao(Profile(weightKg = 70.0, heightCm = 175.0, age = 35, sex = Sex.MALE)),
+        ),
+        healthSyncDao = healthSyncDao,
+        clock = Clock.fixed(t0, ZoneOffset.UTC),
+    )
 
-    @After
-    fun tearDown() = db.close()
+    /**
+     * Match this to the real [RunSnapshot] — read
+     * `app/src/main/java/com/myrunningapp/domain/tracking/` and fill every
+     * parameter it declares. The values below only have to be self-consistent.
+     */
+    private fun snapshot() = RunSnapshot(
+        state = RunSessionState.FINISHED,
+        activityType = ActivityType.RUN,
+        startedAt = t0,
+        distanceMeters = 1609.34,
+        movingDurationSec = 600,
+        elapsedDurationSec = 600,
+        avgPaceSecPerMile = 600.0,
+        segmentIndex = 0,
+        countdownSecondsRemaining = 0,
+        lastFix = null,
+        completedSplits = emptyList(),
+    )
 
     private suspend fun finishedRun(): Long {
         val id = repository.startRun(ActivityType.RUN, t0, weightKg = 70.0)
-        repository.finishRun(
-            runId = id,
-            snapshot = RunSnapshot(
-                distanceMeters = 1609.34,
-                movingDurationSec = 600,
-                elapsedDurationSec = 600,
-                avgPaceSecPerMile = 600.0,
-                completedSplits = emptyList(),
-            ),
-            endedAt = t0.plusSeconds(600),
-        )
+        repository.finishRun(runId = id, snapshot = snapshot(), endedAt = t0.plusSeconds(600))
         return id
     }
 
@@ -1083,35 +1250,35 @@ class RunRepositoryHealthSyncTest {
     fun `finishing a run queues it for Health Connect`() = runTest {
         val id = finishedRun()
 
-        assertEquals(HealthSyncState.PENDING, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.PENDING, runDao.rows[id]!!.healthSyncState)
     }
 
     @Test
     fun `an in-progress run is not queued`() = runTest {
         val id = repository.startRun(ActivityType.RUN, t0, weightKg = 70.0)
 
-        assertEquals(HealthSyncState.NOT_SYNCED, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.NOT_SYNCED, runDao.rows[id]!!.healthSyncState)
     }
 
     @Test
     fun `correcting the activity type queues a rewrite`() = runTest {
         val id = finishedRun()
-        db.healthSyncDao().markState(id, HealthSyncState.SYNCED)
+        healthSyncDao.markState(id, HealthSyncState.SYNCED)
 
         repository.updateActivityType(id, ActivityType.WALK)
 
-        assertEquals(HealthSyncState.PENDING, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.PENDING, runDao.rows[id]!!.healthSyncState)
     }
 
     @Test
     fun `deleting a synced run queues the deletion`() = runTest {
         val id = finishedRun()
-        db.healthSyncDao().markState(id, HealthSyncState.SYNCED)
+        healthSyncDao.markState(id, HealthSyncState.SYNCED)
 
         repository.deleteRun(id)
 
-        assertEquals(listOf(id), db.healthSyncDao().pendingDeletions().map { it.runId })
-        assertEquals(t0, db.healthSyncDao().pendingDeletions().single().requestedAt)
+        assertEquals(listOf(id), healthSyncDao.pendingDeletions().map { it.runId })
+        assertEquals(t0, healthSyncDao.pendingDeletions().single().requestedAt)
     }
 
     @Test
@@ -1120,7 +1287,7 @@ class RunRepositoryHealthSyncTest {
 
         repository.deleteRun(id)
 
-        assertTrue(db.healthSyncDao().pendingDeletions().isEmpty())
+        assertTrue(healthSyncDao.pendingDeletions().isEmpty())
     }
 
     @Test
@@ -1129,14 +1296,10 @@ class RunRepositoryHealthSyncTest {
 
         repository.discardRun(id)
 
-        assertTrue(db.healthSyncDao().pendingDeletions().isEmpty())
+        assertTrue(healthSyncDao.pendingDeletions().isEmpty())
     }
 }
 ```
-
-If `RunSnapshot`'s constructor differs from the call above, read
-`app/src/main/java/com/myrunningapp/domain/tracking/` for its real shape and match
-it; the assertions are what matter.
 
 - [ ] **Step 2: Run it to make sure it fails**
 
@@ -1221,7 +1384,7 @@ Expected after fixing: the whole suite passes.
 
 ```bash
 git add app/src/main/java/com/myrunningapp/data/repository/RunRepository.kt \
-        app/src/test/java/com/myrunningapp/data/repository
+        app/src/test/java/com/myrunningapp/data
 git commit -m "Queue runs for Health Connect as they finish, change and go"
 ```
 
@@ -1487,6 +1650,7 @@ dependency: that is the whole point of the interface.
 **Files:**
 - Create: `app/src/main/java/com/myrunningapp/data/health/HealthConnectGateway.kt`
 - Create: `app/src/main/java/com/myrunningapp/data/health/HealthSyncEngine.kt`
+- Uses: `app/src/test/java/com/myrunningapp/data/FakeDaos.kt` (Task 3)
 - Test: `app/src/test/java/com/myrunningapp/data/health/FakeHealthConnectGateway.kt`
 - Test: `app/src/test/java/com/myrunningapp/data/health/HealthSyncEngineTest.kt`
 
@@ -1590,14 +1754,16 @@ class FakeHealthConnectGateway(
 }
 ```
 
-Create `app/src/test/java/com/myrunningapp/data/health/HealthSyncEngineTest.kt`:
+Create `app/src/test/java/com/myrunningapp/data/health/HealthSyncEngineTest.kt`.
+Plain JUnit against the fakes from Task 3 — no Robolectric, no Room:
 
 ```kotlin
 package com.myrunningapp.data.health
 
-import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
-import com.myrunningapp.data.db.AppDatabase
+import com.myrunningapp.data.FakeHealthSyncDao
+import com.myrunningapp.data.FakeRunDao
+import com.myrunningapp.data.FakeRunPointDao
+import com.myrunningapp.data.FakeSplitDao
 import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
@@ -1606,54 +1772,44 @@ import com.myrunningapp.domain.health.HealthAvailability
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.HealthSyncState
 import kotlinx.coroutines.test.runTest
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import java.time.Instant
 
-@RunWith(RobolectricTestRunner::class)
 class HealthSyncEngineTest {
 
-    private lateinit var db: AppDatabase
-    private lateinit var gateway: FakeHealthConnectGateway
-    private lateinit var engine: HealthSyncEngine
-    private var enabled = true
     private val t0: Instant = Instant.parse("2026-09-09T12:00:00Z")
+    private val runDao = FakeRunDao()
+    private val healthSyncDao = FakeHealthSyncDao(runDao)
+    private val runPointDao = FakeRunPointDao()
+    private val splitDao = FakeSplitDao()
+    private val gateway = FakeHealthConnectGateway()
+    private var enabled = true
 
-    @Before
-    fun setUp() {
-        db = Room.inMemoryDatabaseBuilder(
-            ApplicationProvider.getApplicationContext(),
-            AppDatabase::class.java,
-        ).allowMainThreadQueries().build()
-        gateway = FakeHealthConnectGateway()
-        engine = HealthSyncEngine(
-            healthSyncDao = db.healthSyncDao(),
-            runPointDao = db.runPointDao(),
-            splitDao = db.splitDao(),
-            gateway = gateway,
-            syncEnabled = { enabled },
-        )
-    }
+    private val engine = HealthSyncEngine(
+        healthSyncDao = healthSyncDao,
+        runPointDao = runPointDao,
+        splitDao = splitDao,
+        gateway = gateway,
+        syncEnabled = { enabled },
+    )
 
-    @After
-    fun tearDown() = db.close()
-
-    private suspend fun pendingRun(id: Long = 0, state: HealthSyncState = HealthSyncState.PENDING): Long {
-        val runId = db.runDao().insert(
+    private suspend fun pendingRun(
+        id: Long = 0,
+        state: HealthSyncState = HealthSyncState.PENDING,
+        distanceMeters: Double = 1609.34,
+    ): Long {
+        val runId = runDao.insert(
             RunEntity(
                 id = id, startedAt = t0, endedAt = t0.plusSeconds(600),
-                activityType = ActivityType.RUN, distanceMeters = 1609.34,
+                activityType = ActivityType.RUN, distanceMeters = distanceMeters,
                 movingDurationSec = 600, elapsedDurationSec = 600,
                 avgPaceSecPerMile = 600.0, calories = 120, weightKgAtRun = 70.0,
                 healthSyncState = state,
             ),
         )
-        db.runPointDao().insertAll(
+        runPointDao.insertAll(
             listOf(
                 RunPointEntity(runId = runId, timestamp = t0, latitude = 40.0, longitude = -105.0,
                     altitudeMeters = 1600.0, accuracyMeters = 5f, segmentIndex = 0),
@@ -1661,12 +1817,14 @@ class HealthSyncEngineTest {
                     longitude = -105.0, altitudeMeters = 1600.0, accuracyMeters = 5f, segmentIndex = 0),
             ),
         )
-        db.splitDao().insert(
+        splitDao.insert(
             SplitEntity(runId = runId, splitNumber = 1, distanceMeters = 1609.34,
                 durationSec = 600, paceSecPerMile = 600.0),
         )
         return runId
     }
+
+    private fun stateOf(id: Long) = runDao.rows[id]!!.healthSyncState
 
     @Test
     fun `a pending run is written and marked synced`() = runTest {
@@ -1675,7 +1833,7 @@ class HealthSyncEngineTest {
         assertEquals(HealthSyncOutcome.COMPLETED, engine.sync())
 
         assertEquals(listOf("run-$id"), gateway.written.map { it.clientRecordId })
-        assertEquals(HealthSyncState.SYNCED, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.SYNCED, stateOf(id))
     }
 
     @Test
@@ -1686,7 +1844,7 @@ class HealthSyncEngineTest {
         assertEquals(HealthSyncOutcome.DISABLED, engine.sync())
 
         assertTrue(gateway.written.isEmpty())
-        assertEquals(HealthSyncState.PENDING, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.PENDING, stateOf(id))
     }
 
     @Test
@@ -1706,7 +1864,7 @@ class HealthSyncEngineTest {
 
         assertEquals(HealthSyncOutcome.PERMISSION_MISSING, engine.sync())
 
-        assertEquals(HealthSyncState.PENDING, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.PENDING, stateOf(id))
     }
 
     @Test
@@ -1718,8 +1876,8 @@ class HealthSyncEngineTest {
 
         assertEquals(HealthSyncOutcome.PERMISSION_MISSING, engine.sync())
 
-        assertEquals(HealthSyncState.SYNCED, db.runDao().getById(first)!!.healthSyncState)
-        assertEquals(HealthSyncState.PENDING, db.runDao().getById(second)!!.healthSyncState)
+        assertEquals(HealthSyncState.SYNCED, stateOf(first))
+        assertEquals(HealthSyncState.PENDING, stateOf(second))
     }
 
     @Test
@@ -1729,7 +1887,7 @@ class HealthSyncEngineTest {
 
         assertEquals(HealthSyncOutcome.RETRY_LATER, engine.sync())
 
-        assertEquals(HealthSyncState.PENDING, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.PENDING, stateOf(id))
     }
 
     @Test
@@ -1740,15 +1898,15 @@ class HealthSyncEngineTest {
 
         assertEquals(HealthSyncOutcome.COMPLETED, engine.sync())
 
-        assertEquals(HealthSyncState.FAILED, db.runDao().getById(bad)!!.healthSyncState)
-        assertEquals(HealthSyncState.SYNCED, db.runDao().getById(good)!!.healthSyncState)
+        assertEquals(HealthSyncState.FAILED, stateOf(bad))
+        assertEquals(HealthSyncState.SYNCED, stateOf(good))
     }
 
     @Test
     fun `an edited run is rewritten under the same client id rather than duplicated`() = runTest {
         val id = pendingRun()
         engine.sync()
-        db.healthSyncDao().markState(id, HealthSyncState.PENDING)
+        healthSyncDao.markState(id, HealthSyncState.PENDING)
 
         engine.sync()
 
@@ -1757,18 +1915,18 @@ class HealthSyncEngineTest {
 
     @Test
     fun `queued deletions drain and clear`() = runTest {
-        db.healthSyncDao().queueDeletion(HealthDeletionEntity(runId = 7, requestedAt = t0))
+        healthSyncDao.queueDeletion(HealthDeletionEntity(runId = 7, requestedAt = t0))
 
         assertEquals(HealthSyncOutcome.COMPLETED, engine.sync())
 
         assertEquals(listOf("run-7"), gateway.deleted)
-        assertTrue(db.healthSyncDao().pendingDeletions().isEmpty())
+        assertTrue(healthSyncDao.pendingDeletions().isEmpty())
     }
 
     @Test
     fun `deletions drain before writes so a delete cannot be undone by a stale write`() = runTest {
         pendingRun(id = 1)
-        db.healthSyncDao().queueDeletion(HealthDeletionEntity(runId = 9, requestedAt = t0))
+        healthSyncDao.queueDeletion(HealthDeletionEntity(runId = 9, requestedAt = t0))
 
         engine.sync()
 
@@ -1778,12 +1936,12 @@ class HealthSyncEngineTest {
 
     @Test
     fun `a failed deletion stays queued`() = runTest {
-        db.healthSyncDao().queueDeletion(HealthDeletionEntity(runId = 7, requestedAt = t0))
+        healthSyncDao.queueDeletion(HealthDeletionEntity(runId = 7, requestedAt = t0))
         gateway.deleteResult = HealthWriteResult.Retryable
 
         assertEquals(HealthSyncOutcome.RETRY_LATER, engine.sync())
 
-        assertEquals(listOf(7L), db.healthSyncDao().pendingDeletions().map { it.runId })
+        assertEquals(listOf(7L), healthSyncDao.pendingDeletions().map { it.runId })
     }
 
     @Test
@@ -1807,18 +1965,11 @@ class HealthSyncEngineTest {
 
     @Test
     fun `a run with nothing in it is marked failed rather than retried forever`() = runTest {
-        val id = db.runDao().insert(
-            RunEntity(
-                startedAt = t0, endedAt = t0, activityType = ActivityType.RUN,
-                distanceMeters = 0.0, movingDurationSec = 0, elapsedDurationSec = 0,
-                avgPaceSecPerMile = 0.0, calories = 0, weightKgAtRun = 70.0,
-                healthSyncState = HealthSyncState.PENDING,
-            ),
-        )
+        val id = pendingRun(distanceMeters = 0.0)
 
         engine.sync()
 
-        assertEquals(HealthSyncState.FAILED, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(HealthSyncState.FAILED, stateOf(id))
         assertTrue(gateway.written.isEmpty())
     }
 }
@@ -1844,7 +1995,6 @@ import com.myrunningapp.domain.health.HealthAvailability
 import com.myrunningapp.domain.health.WorkoutRecordBuilder
 import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.healthClientRecordId
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -1933,8 +2083,8 @@ class HealthSyncEngine @Inject constructor(
     private suspend fun buildWorkout(run: RunEntity, includeRoute: Boolean) =
         WorkoutRecordBuilder.build(
             run = run.toDomain(),
-            splits = splitDao.observeForRun(run.id).first().map { it.toDomain() },
-            points = runPointDao.observeForRun(run.id).first().map { it.toDomain() },
+            splits = splitDao.getForRun(run.id).map { it.toDomain() },
+            points = runPointDao.getForRun(run.id).map { it.toDomain() },
             includeRoute = includeRoute,
         )
 }
@@ -1943,9 +2093,9 @@ class HealthSyncEngine @Inject constructor(
 - [ ] **Step 5: Run the tests**
 
 Run: `./gradlew testDebugUnitTest --tests '*HealthSyncEngineTest*'`
-Expected: PASS (14 tests). If `splitDao.observeForRun` / `runPointDao.observeForRun`
-have different names, read those DAOs and use the real ones — the engine only
-needs a suspend read of a run's splits and points.
+Expected: PASS (14 tests). If `splitDao.getForRun` / `runPointDao.getForRun` have
+different names, read those DAOs and use the real ones — the engine only needs a
+suspend read of a run's splits and points.
 
 - [ ] **Step 6: Commit**
 
@@ -2002,7 +2152,6 @@ androidx-health-connect = { group = "androidx.health.connect", name = "connect-c
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref = "androidxHilt" }
 androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "androidxHilt" }
-androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
 ```
 
 In `app/build.gradle.kts`, in `dependencies`, after the osmdroid line:
@@ -2014,11 +2163,11 @@ In `app/build.gradle.kts`, in `dependencies`, after the osmdroid line:
     ksp(libs.androidx.hilt.compiler)
 ```
 
-and with the other `testImplementation` lines:
-
 ```kotlin
-    testImplementation(libs.androidx.work.testing)
 ```
+
+(No `work-testing`: the worker's decision is tested as a pure function, and
+Robolectric — which `work-testing` needs — does not run on this machine.)
 
 - [ ] **Step 2: Verify the dependency resolves**
 
@@ -2398,7 +2547,7 @@ abstract class HealthModule {
 - [ ] **Step 8: Build and run the whole suite**
 
 Run: `./gradlew assembleDebug testDebugUnitTest`
-Expected: builds and passes.
+Expected: builds; failure count unchanged from the pre-existing conscrypt set.
 
 - [ ] **Step 9: Commit**
 
@@ -2419,97 +2568,120 @@ needs no stored uid. Note the connect-client version actually resolved."
 What actually causes a drain to happen.
 
 **Files:**
+- Create: `app/src/main/java/com/myrunningapp/data/health/HealthSyncResults.kt`
 - Create: `app/src/main/java/com/myrunningapp/data/health/HealthSyncWorker.kt`
 - Create: `app/src/main/java/com/myrunningapp/data/health/HealthSyncScheduler.kt`
 - Modify: `app/src/main/java/com/myrunningapp/MyRunningApp.kt`
 - Modify: `app/src/main/AndroidManifest.xml`
 - Modify: `app/src/main/java/com/myrunningapp/data/repository/RunRepository.kt`
-- Test: `app/src/test/java/com/myrunningapp/data/health/HealthSyncWorkerTest.kt`
+- Test: `app/src/test/java/com/myrunningapp/data/health/HealthSyncResultsTest.kt`
 
 **Interfaces:**
 - Consumes: `HealthSyncEngine`, `HealthSyncOutcome` (Task 5).
 - Produces:
   - `class HealthSyncScheduler @Inject constructor(@ApplicationContext context: Context) { fun requestSync() }`
+  - `enum class HealthSyncWorkerResult { SUCCESS, RETRY }` and
+    `object HealthSyncResults { fun forOutcome(outcome: HealthSyncOutcome): HealthSyncWorkerResult }`
   - `HealthSyncWorker` (Hilt worker, unique work name `health-sync`)
   - `RunRepository` gains `healthSyncScheduler: HealthSyncScheduler` and calls `requestSync()` after each outbox change.
 
 - [ ] **Step 1: Write the failing worker test**
 
-Create `app/src/test/java/com/myrunningapp/data/health/HealthSyncWorkerTest.kt`:
+The worker itself is a `CoroutineWorker`, which cannot be instantiated without
+Robolectric — and Robolectric does not run on this machine. So the decision the
+worker makes lives in a pure function beside it, and that is what is tested. The
+worker body becomes a one-line call to it.
+
+Create `app/src/test/java/com/myrunningapp/data/health/HealthSyncResultsTest.kt`:
 
 ```kotlin
 package com.myrunningapp.data.health
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
-import androidx.work.ListenableWorker
-import androidx.work.testing.TestListenableWorkerBuilder
-import io.mockk.coEvery
-import io.mockk.mockk
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
-class HealthSyncWorkerTest {
-
-    private val context: Context = ApplicationProvider.getApplicationContext()
-
-    private fun worker(outcome: HealthSyncOutcome): HealthSyncWorker {
-        val engine = mockk<HealthSyncEngine>()
-        coEvery { engine.sync() } returns outcome
-        return TestListenableWorkerBuilder<HealthSyncWorker>(context)
-            .setWorkerFactory(
-                object : androidx.work.WorkerFactory() {
-                    override fun createWorker(
-                        appContext: Context,
-                        workerClassName: String,
-                        workerParameters: androidx.work.WorkerParameters,
-                    ) = HealthSyncWorker(appContext, workerParameters, engine)
-                },
-            )
-            .build()
-    }
+class HealthSyncResultsTest {
 
     @Test
-    fun `a completed drain succeeds`() = runTest {
-        assertEquals(ListenableWorker.Result.success(), worker(HealthSyncOutcome.COMPLETED).doWork())
-    }
-
-    @Test
-    fun `a retryable drain asks WorkManager to try again`() = runTest {
-        assertEquals(ListenableWorker.Result.retry(), worker(HealthSyncOutcome.RETRY_LATER).doWork())
-    }
-
-    @Test
-    fun `the toggle being off is a success, not a retry`() = runTest {
-        assertEquals(ListenableWorker.Result.success(), worker(HealthSyncOutcome.DISABLED).doWork())
-    }
-
-    @Test
-    fun `missing permission is a success so WorkManager stops backing off`() = runTest {
-        // Nothing is lost: the queue is intact and granting permission enqueues again.
+    fun `a completed drain succeeds`() {
         assertEquals(
-            ListenableWorker.Result.success(),
-            worker(HealthSyncOutcome.PERMISSION_MISSING).doWork(),
+            HealthSyncWorkerResult.SUCCESS,
+            HealthSyncResults.forOutcome(HealthSyncOutcome.COMPLETED),
         )
     }
 
     @Test
-    fun `an absent Health Connect is a success`() = runTest {
-        assertEquals(ListenableWorker.Result.success(), worker(HealthSyncOutcome.UNAVAILABLE).doWork())
+    fun `only a transient problem is retried`() {
+        assertEquals(
+            HealthSyncWorkerResult.RETRY,
+            HealthSyncResults.forOutcome(HealthSyncOutcome.RETRY_LATER),
+        )
+    }
+
+    @Test
+    fun `the toggle being off is a success, not a retry`() {
+        assertEquals(
+            HealthSyncWorkerResult.SUCCESS,
+            HealthSyncResults.forOutcome(HealthSyncOutcome.DISABLED),
+        )
+    }
+
+    @Test
+    fun `missing permission is a success so WorkManager stops backing off`() {
+        // Nothing is lost: the queue is intact, and granting permission enqueues again.
+        assertEquals(
+            HealthSyncWorkerResult.SUCCESS,
+            HealthSyncResults.forOutcome(HealthSyncOutcome.PERMISSION_MISSING),
+        )
+    }
+
+    @Test
+    fun `an absent Health Connect is a success`() {
+        assertEquals(
+            HealthSyncWorkerResult.SUCCESS,
+            HealthSyncResults.forOutcome(HealthSyncOutcome.UNAVAILABLE),
+        )
     }
 }
 ```
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `./gradlew testDebugUnitTest --tests '*HealthSyncWorkerTest*'`
-Expected: FAIL — unresolved reference `HealthSyncWorker`.
+Run: `./gradlew testDebugUnitTest --tests '*HealthSyncResultsTest*'`
+Expected: FAIL — unresolved reference `HealthSyncResults`.
 
 - [ ] **Step 3: Write the worker and the scheduler**
+
+Create `app/src/main/java/com/myrunningapp/data/health/HealthSyncResults.kt`:
+
+```kotlin
+package com.myrunningapp.data.health
+
+/** What the worker should tell WorkManager. Mirrors `ListenableWorker.Result`. */
+enum class HealthSyncWorkerResult { SUCCESS, RETRY }
+
+/**
+ * The worker's whole decision, pulled out so it can be tested as plain Kotlin —
+ * a `CoroutineWorker` cannot be built without an Android runtime.
+ *
+ * Only a genuinely transient problem is a retry. Everything else — the toggle
+ * off, no Health Connect, permission revoked — is a success: the queue is intact
+ * and something else (granting permission, switching the toggle on) will enqueue
+ * again. Retrying those would only make WorkManager back off further and further
+ * for a condition no amount of waiting fixes.
+ */
+object HealthSyncResults {
+
+    fun forOutcome(outcome: HealthSyncOutcome): HealthSyncWorkerResult = when (outcome) {
+        HealthSyncOutcome.RETRY_LATER -> HealthSyncWorkerResult.RETRY
+        HealthSyncOutcome.COMPLETED,
+        HealthSyncOutcome.DISABLED,
+        HealthSyncOutcome.UNAVAILABLE,
+        HealthSyncOutcome.PERMISSION_MISSING,
+        -> HealthSyncWorkerResult.SUCCESS
+    }
+}
+```
 
 Create `app/src/main/java/com/myrunningapp/data/health/HealthSyncWorker.kt`:
 
@@ -2523,15 +2695,7 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
-/**
- * Drains the outbox in the background.
- *
- * Only a genuinely transient problem is a retry. Everything else — the toggle
- * off, no Health Connect, permission revoked — is a success: the queue is intact
- * and something else (granting permission, switching the toggle on) will enqueue
- * again. Retrying those would only make WorkManager back off further and further
- * for a condition that no amount of waiting fixes.
- */
+/** Drains the outbox in the background. The decision is [HealthSyncResults]'. */
 @HiltWorker
 class HealthSyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
@@ -2539,13 +2703,9 @@ class HealthSyncWorker @AssistedInject constructor(
     private val engine: HealthSyncEngine,
 ) : CoroutineWorker(appContext, params) {
 
-    override suspend fun doWork(): Result = when (engine.sync()) {
-        HealthSyncOutcome.RETRY_LATER -> Result.retry()
-        HealthSyncOutcome.COMPLETED,
-        HealthSyncOutcome.DISABLED,
-        HealthSyncOutcome.UNAVAILABLE,
-        HealthSyncOutcome.PERMISSION_MISSING,
-        -> Result.success()
+    override suspend fun doWork(): Result = when (HealthSyncResults.forOutcome(engine.sync())) {
+        HealthSyncWorkerResult.SUCCESS -> Result.success()
+        HealthSyncWorkerResult.RETRY -> Result.retry()
     }
 
     companion object {
@@ -2665,7 +2825,8 @@ healthSyncScheduler = mockk(relaxed = true),
 - [ ] **Step 6: Run everything**
 
 Run: `./gradlew assembleDebug testDebugUnitTest`
-Expected: builds and passes, including the 5 new worker tests.
+Expected: builds; the 5 new `HealthSyncResultsTest` tests pass and the failure
+count is still the pre-existing conscrypt set.
 
 - [ ] **Step 7: Commit**
 
@@ -2691,7 +2852,7 @@ The only UI in this milestone.
 - Modify: `app/src/main/java/com/myrunningapp/ui/profile/ProfileScreen.kt`
 - Create: `app/src/main/java/com/myrunningapp/ui/health/HealthSyncSection.kt`
 - Modify: `app/src/main/res/values/strings.xml`
-- Test: `app/src/test/java/com/myrunningapp/ui/health/HealthSyncSectionTest.kt`
+- Test: none new — see the note below
 
 **Interfaces:**
 - Consumes: `HealthSyncUiState`, `HealthSyncStatus`, `HealthAvailability` (Task 4); `HealthConnectGateway` (Task 5); `HealthSyncScheduler` (Task 7); `HealthSyncDao.observeCounts` (Task 2).
@@ -2700,120 +2861,15 @@ The only UI in this milestone.
   - `ProfileViewModel.setHealthSyncEnabled(enabled: Boolean)`, `ProfileViewModel.onHealthPermissionResult(granted: Set<String>)`, `ProfileViewModel.syncNow()`, `ProfileViewModel.healthPermissionsToRequest: Set<String>`
   - `@Composable fun HealthSyncSection(state: HealthSyncUiState, enabled: Boolean, onToggle: (Boolean) -> Unit, onRequestPermission: () -> Unit, onSyncNow: () -> Unit, onOpenHealthConnect: () -> Unit)`
 
-- [ ] **Step 1: Write the failing UI test**
+**No Compose test for this task.** Compose UI tests need Robolectric, which does
+not run on this machine (see Global Constraints), and this project has no Compose
+tests today for that reason. Everything worth asserting about this section is
+already pinned down by `HealthSyncStatusTest` — which state each combination
+produces — and the section is a thin renderer over that. Its appearance is
+covered by the field-test checklist at the end of this plan.
 
-Create `app/src/test/java/com/myrunningapp/ui/health/HealthSyncSectionTest.kt`,
-following the Compose test style already used under
-`app/src/test/java/com/myrunningapp/ui/`:
-
-```kotlin
-package com.myrunningapp.ui.health
-
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import com.myrunningapp.domain.health.HealthSyncUiState
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Rule
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-
-@RunWith(RobolectricTestRunner::class)
-class HealthSyncSectionTest {
-
-    @get:Rule val compose = createComposeRule()
-
-    @Test
-    fun `nothing is drawn when Health Connect is not installed`() {
-        compose.setContent {
-            HealthSyncSection(
-                state = HealthSyncUiState.Hidden, enabled = false,
-                onToggle = {}, onRequestPermission = {}, onSyncNow = {}, onOpenHealthConnect = {},
-            )
-        }
-
-        compose.onNodeWithText("Health Connect").assertDoesNotExist()
-    }
-
-    @Test
-    fun `an up-to-date sync says how many runs are published`() {
-        compose.setContent {
-            HealthSyncSection(
-                state = HealthSyncUiState.UpToDate(synced = 42), enabled = true,
-                onToggle = {}, onRequestPermission = {}, onSyncNow = {}, onOpenHealthConnect = {},
-            )
-        }
-
-        compose.onNodeWithText("Synced 42 runs").assertIsDisplayed()
-    }
-
-    @Test
-    fun `a draining queue says how much is left`() {
-        compose.setContent {
-            HealthSyncSection(
-                state = HealthSyncUiState.Working(pending = 3), enabled = true,
-                onToggle = {}, onRequestPermission = {}, onSyncNow = {}, onOpenHealthConnect = {},
-            )
-        }
-
-        compose.onNodeWithText("3 waiting").assertIsDisplayed()
-    }
-
-    @Test
-    fun `missing permission offers to ask for it`() {
-        var asked = false
-        compose.setContent {
-            HealthSyncSection(
-                state = HealthSyncUiState.NeedsPermission, enabled = true,
-                onToggle = {}, onRequestPermission = { asked = true }, onSyncNow = {},
-                onOpenHealthConnect = {},
-            )
-        }
-
-        compose.onNodeWithText("Grant permission").performClick()
-
-        assertTrue(asked)
-    }
-
-    @Test
-    fun `switching the toggle reports the new value`() {
-        val toggles = mutableListOf<Boolean>()
-        compose.setContent {
-            HealthSyncSection(
-                state = HealthSyncUiState.Off, enabled = false,
-                onToggle = { toggles += it }, onRequestPermission = {}, onSyncNow = {},
-                onOpenHealthConnect = {},
-            )
-        }
-
-        compose.onNodeWithText("Sync workouts to Health Connect").performClick()
-
-        assertEquals(listOf(true), toggles)
-    }
-
-    @Test
-    fun `turning it off explains that published data stays put`() {
-        compose.setContent {
-            HealthSyncSection(
-                state = HealthSyncUiState.Off, enabled = false,
-                onToggle = {}, onRequestPermission = {}, onSyncNow = {}, onOpenHealthConnect = {},
-            )
-        }
-
-        compose.onNodeWithText(
-            "Workouts already written stay in Health Connect. Remove them there.",
-        ).assertIsDisplayed()
-    }
-}
-```
-
-- [ ] **Step 2: Run it to make sure it fails**
-
-Run: `./gradlew testDebugUnitTest --tests '*HealthSyncSectionTest*'`
-Expected: FAIL — unresolved reference `HealthSyncSection`.
+Keep the section thin enough for that to be true: no logic in the composable
+beyond choosing which text to draw for a state it is handed.
 
 - [ ] **Step 3: Add the strings**
 
@@ -2963,10 +3019,10 @@ fun HealthSyncSection(
 }
 ```
 
-- [ ] **Step 5: Run the UI tests**
+- [ ] **Step 5: Build**
 
-Run: `./gradlew testDebugUnitTest --tests '*HealthSyncSectionTest*'`
-Expected: PASS (6 tests).
+Run: `./gradlew assembleDebug`
+Expected: compiles, including the new composable and strings.
 
 - [ ] **Step 6: Wire the ViewModel**
 
@@ -3065,13 +3121,12 @@ If `ACTION_HEALTH_CONNECT_SETTINGS` is not present in the resolved version, use
 - [ ] **Step 8: Build and run everything**
 
 Run: `./gradlew assembleDebug testDebugUnitTest`
-Expected: builds and passes.
+Expected: builds; failure count unchanged from the pre-existing conscrypt set.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add app/src/main/java/com/myrunningapp/ui app/src/main/res/values/strings.xml \
-        app/src/test/java/com/myrunningapp/ui/health
+git add app/src/main/java/com/myrunningapp/ui app/src/main/res/values/strings.xml
 git commit -m "Add the Health Connect settings section and permission flow
 
 The ask is spent after two declines, so a second refusal routes into
