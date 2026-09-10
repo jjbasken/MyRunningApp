@@ -12,9 +12,19 @@
 
 ## Global Constraints
 
-- `minSdk 26`, `targetSdk 35`, `compileSdk 35`, JVM target 17 — all unchanged.
+- `minSdk 26`, `targetSdk 35`, JVM target 17 — unchanged. **`compileSdk` moves 35 -> 36
+  and AGP 8.7.3 -> 8.9.1 (Gradle wrapper 8.11.1) in Task 6**: `connect-client` 1.1.0's
+  AAR metadata declares `minCompileSdk=36` / `minAndroidGradlePluginVersion=8.9.1`, and
+  every stable release back through 1.1.0-beta02 says the same, so the only way to keep
+  compileSdk 35 is to ship an alpha dependency. `targetSdk` is a separate knob that the
+  AAR gate does not read, and it **stays at 35** — raising it would opt the location
+  foreground service into untested platform behaviour changes for no benefit here.
 - `domain/` stays pure Kotlin: **no `android.*` and no `androidx.health.*` imports** in `domain/`. This is why `HealthWorkout` is a platform-free model.
-- `androidx.health.*` types appear in exactly one file: `data/health/HealthConnectGatewayImpl.kt`. Everything else talks to the `HealthConnectGateway` interface.
+- `androidx.health.*` record and client I/O logic lives in exactly one file:
+  `data/health/HealthConnectGatewayImpl.kt`. The one other file permitted to name those
+  types is `data/health/HealthPermissions.kt`, which derives permission strings from the
+  record classes — the alternative is hardcoding permission strings, which is worse.
+  Everything else talks to the `HealthConnectGateway` interface.
 - The feature is **off by default**. Every existing flow and test must pass unchanged with the toggle off or Health Connect absent.
 - `clientRecordId` format is exactly `"run-<id>"` (e.g. `run-42`). Nothing else derives ids.
 - New dependency versions: `connect-client 1.1.0`, `work-runtime-ktx 2.10.0`, `androidx.hilt 1.2.0`.
