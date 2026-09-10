@@ -33,15 +33,20 @@ object WorkoutRecordBuilder {
 
         val segments = HealthTimeline.segments(run, points)
 
+        // A split whose start and end offsets both clamp to the same instant
+        // (e.g. a zero-duration split, or one that starts and ends on the same
+        // segment boundary) would produce a zero-length ExerciseLap, which
+        // Health Connect rejects; drop it rather than let it fail construction.
         var movingOffsetSec = 0L
-        val laps = splits.sortedBy { it.splitNumber }.map { split ->
+        val laps = splits.sortedBy { it.splitNumber }.mapNotNull { split ->
             val startedAt = HealthTimeline.instantAt(segments, movingOffsetSec)
             movingOffsetSec += split.durationSec
-            HealthLap(
-                startedAt = startedAt,
-                endedAt = HealthTimeline.instantAt(segments, movingOffsetSec),
-                distanceMeters = split.distanceMeters,
-            )
+            val endedAt = HealthTimeline.instantAt(segments, movingOffsetSec)
+            if (!startedAt.isBefore(endedAt)) {
+                null
+            } else {
+                HealthLap(startedAt = startedAt, endedAt = endedAt, distanceMeters = split.distanceMeters)
+            }
         }
 
         return HealthWorkout(
@@ -58,15 +63,22 @@ object WorkoutRecordBuilder {
             segments = segments,
             laps = laps,
             route = if (includeRoute) {
-                points.sortedBy { it.timestamp }.map { point ->
-                    HealthRoutePoint(
-                        time = point.timestamp,
-                        latitude = point.latitude,
-                        longitude = point.longitude,
-                        altitudeMeters = point.altitudeMeters,
-                        horizontalAccuracyMeters = point.accuracyMeters,
-                    )
-                }
+                // Health Connect requires every route point's time to fall in
+                // [startTime, endTime) — the end is strict. The last GPS fix
+                // routinely lands exactly on endedAt, so that boundary point
+                // must be excluded rather than kept.
+                points
+                    .filter { !it.timestamp.isBefore(run.startedAt) && it.timestamp.isBefore(run.endedAt) }
+                    .sortedBy { it.timestamp }
+                    .map { point ->
+                        HealthRoutePoint(
+                            time = point.timestamp,
+                            latitude = point.latitude,
+                            longitude = point.longitude,
+                            altitudeMeters = point.altitudeMeters,
+                            horizontalAccuracyMeters = point.accuracyMeters,
+                        )
+                    }
             } else {
                 emptyList()
             },

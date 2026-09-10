@@ -137,6 +137,41 @@ class WorkoutRecordBuilderTest {
     }
 
     @Test
+    fun `a route point exactly on endedAt is excluded`() {
+        val elapsed = 1200L
+        val points = listOf(point(0), point(elapsed))
+
+        val workout = WorkoutRecordBuilder.build(run(elapsedDurationSec = elapsed), emptyList(), points, true)!!
+
+        assertEquals(1, workout.route.size)
+        assertEquals(t0, workout.route.first().time)
+    }
+
+    @Test
+    fun `a route point exactly on startedAt is kept`() {
+        val points = listOf(point(0), point(10))
+
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, true)!!
+
+        assertTrue(workout.route.any { it.time == t0 })
+    }
+
+    @Test
+    fun `a zero-duration split produces no lap`() {
+        val splits = listOf(split(1, 540), split(2, 0), split(3, 540))
+        val points = listOf(point(0), point(1080))
+
+        val workout = WorkoutRecordBuilder
+            .build(run(movingDurationSec = 1080), splits, points, false)!!
+
+        assertEquals(2, workout.laps.size)
+        assertEquals(t0, workout.laps[0].startedAt)
+        assertEquals(t0.plusSeconds(540), workout.laps[0].endedAt)
+        assertEquals(t0.plusSeconds(540), workout.laps[1].startedAt)
+        assertEquals(t0.plusSeconds(1080), workout.laps[1].endedAt)
+    }
+
+    @Test
     fun `a run that never moved is not worth writing`() {
         val zeroLength = run(distanceMeters = 0.0, movingDurationSec = 0, elapsedDurationSec = 0)
 

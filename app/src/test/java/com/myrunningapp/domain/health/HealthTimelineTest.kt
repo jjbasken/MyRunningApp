@@ -82,4 +82,32 @@ class HealthTimelineTest {
 
         assertEquals(t0.plusSeconds(100), HealthTimeline.instantAt(segments, 9_999))
     }
+
+    @Test
+    fun `an offset exactly on a segment boundary returns the next segment's start`() {
+        val segments = listOf(
+            HealthSegment(t0, t0.plusSeconds(100)),
+            HealthSegment(t0.plusSeconds(400), t0.plusSeconds(500)),
+        )
+
+        assertEquals(t0.plusSeconds(400), HealthTimeline.instantAt(segments, 100))
+    }
+
+    @Test
+    fun `a segment index holding a single fix is dropped as zero-length`() {
+        val points = listOf(point(0, 0), point(100, 0), point(200, 1))
+
+        val segments = HealthTimeline.segments(run(300), points)
+
+        assertEquals(listOf(HealthSegment(t0, t0.plusSeconds(100))), segments)
+    }
+
+    @Test
+    fun `segments falls back to the whole run when every segment is degenerate`() {
+        val points = listOf(point(50, 0), point(150, 1))
+
+        val segments = HealthTimeline.segments(run(300), points)
+
+        assertEquals(listOf(HealthSegment(t0, t0.plusSeconds(300))), segments)
+    }
 }
