@@ -18,6 +18,7 @@ import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Sex
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -252,6 +253,52 @@ class AppDatabaseTest {
             assertFalse(run.isInProgress)
             assertFalse(run.wasRecovered)
             assertEquals(1, db.runPointDao().countForRun(1))
+        } finally {
+            helper.close()
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun `migrating to 3 leaves existing runs unsynced and adds the deletion queue`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "migration-2-3-test.db"
+        context.deleteDatabase(name)
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(name)
+                .callback(object : SupportSQLiteOpenHelper.Callback(2) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        // The v2 schema, as checked in at app/schemas/.../2.json.
+                        val schema = JSONObject(
+                            javaClass.classLoader!!
+                                .getResourceAsStream("com.myrunningapp.data.db.AppDatabase/2.json")!!
+                                .reader().readText(),
+                        )
+                        val entities = schema.getJSONObject("database").getJSONArray("entities")
+                        for (i in 0 until entities.length()) {
+                            db.execSQL(entities.getJSONObject(i).getString("createSql")
+                                .replace("\${TABLE_NAME}", entities.getJSONObject(i).getString("tableName")))
+                        }
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                }).build(),
+        )
+        try {
+            helper.writableDatabase.execSQL(
+                "INSERT INTO runs VALUES (1, 1000, 31000, 'RUN', 100.0, 30, 30, 482.8, 7, 70.0, 0, 0)",
+            )
+            helper.close()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+                .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
+
+            val run = db.runDao().getById(1)!!
+            assertEquals(HealthSyncState.NOT_SYNCED, run.healthSyncState)
+            assertEquals(100.0, run.distanceMeters, 0.0)
+            assertTrue(db.healthSyncDao().pendingDeletions().isEmpty())
         } finally {
             helper.close()
             db.close()

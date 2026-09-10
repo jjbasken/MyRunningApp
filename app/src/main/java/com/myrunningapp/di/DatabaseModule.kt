@@ -3,6 +3,7 @@ package com.myrunningapp.di
 import android.content.Context
 import androidx.room.Room
 import com.myrunningapp.data.db.AppDatabase
+import com.myrunningapp.data.db.dao.HealthSyncDao
 import com.myrunningapp.data.db.dao.ProfileDao
 import com.myrunningapp.data.db.dao.RunDao
 import com.myrunningapp.data.db.dao.RunPointDao
@@ -22,7 +23,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS)
             .build()
 
@@ -37,4 +38,7 @@ object DatabaseModule {
 
     @Provides
     fun provideProfileDao(db: AppDatabase): ProfileDao = db.profileDao()
+
+    @Provides
+    fun provideHealthSyncDao(db: AppDatabase): HealthSyncDao = db.healthSyncDao()
 }

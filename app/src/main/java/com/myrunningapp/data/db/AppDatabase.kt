@@ -5,10 +5,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.myrunningapp.data.db.dao.HealthSyncDao
 import com.myrunningapp.data.db.dao.ProfileDao
 import com.myrunningapp.data.db.dao.RunDao
 import com.myrunningapp.data.db.dao.RunPointDao
 import com.myrunningapp.data.db.dao.SplitDao
+import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.ProfileEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
@@ -20,8 +22,9 @@ import com.myrunningapp.data.db.entity.SplitEntity
         RunPointEntity::class,
         SplitEntity::class,
         ProfileEntity::class,
+        HealthDeletionEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -30,12 +33,34 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun runPointDao(): RunPointDao
     abstract fun splitDao(): SplitDao
     abstract fun profileDao(): ProfileDao
+    abstract fun healthSyncDao(): HealthSyncDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE runs ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE runs ADD COLUMN wasRecovered INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * Adds the Health Connect outbox. Deliberately leaves every run
+         * NOT_SYNCED: nothing may be published before the user switches the
+         * feature on, and switching it on is what queues the backfill.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE runs ADD COLUMN healthSyncState TEXT NOT NULL DEFAULT 'NOT_SYNCED'",
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS health_deletions (
+                        runId INTEGER NOT NULL PRIMARY KEY,
+                        requestedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
             }
         }
 

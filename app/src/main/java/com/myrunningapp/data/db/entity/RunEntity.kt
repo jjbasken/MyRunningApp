@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Run
 import java.time.Instant
 
@@ -21,6 +22,8 @@ data class RunEntity(
     val weightKgAtRun: Double,
     @ColumnInfo(defaultValue = "0") val isInProgress: Boolean = false,
     @ColumnInfo(defaultValue = "0") val wasRecovered: Boolean = false,
+    @ColumnInfo(defaultValue = "NOT_SYNCED")
+    val healthSyncState: HealthSyncState = HealthSyncState.NOT_SYNCED,
 ) {
     fun toDomain(): Run = Run(
         id = id,
