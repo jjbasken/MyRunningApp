@@ -36,12 +36,20 @@ class HealthConnectGatewayImpl @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : HealthConnectGateway {
 
-    private val client: HealthConnectClient? by lazy {
-        if (availability() == HealthAvailability.AVAILABLE) {
-            HealthConnectClient.getOrCreate(context)
-        } else {
-            null
-        }
+    /**
+     * Resolved per call rather than cached with `by lazy`: availability can go
+     * from unavailable to available mid-process (Health Connect gets installed
+     * or updated), and `by lazy` would freeze a null result — a failed first
+     * touch — for the rest of the process, with no way for the user to recover
+     * short of restarting the app. Only a *successful* creation is cached.
+     */
+    @Volatile
+    private var cachedClient: HealthConnectClient? = null
+
+    private fun resolveClient(): HealthConnectClient? {
+        cachedClient?.let { return it }
+        if (availability() != HealthAvailability.AVAILABLE) return null
+        return HealthConnectClient.getOrCreate(context).also { cachedClient = it }
     }
 
     override fun availability(): HealthAvailability =
@@ -59,26 +67,49 @@ class HealthConnectGatewayImpl @Inject constructor(
         granted().contains(HealthPermissions.ROUTE)
 
     private suspend fun granted(): Set<String> =
-        client?.permissionController?.getGrantedPermissions() ?: emptySet()
+        resolveClient()?.permissionController?.getGrantedPermissions() ?: emptySet()
 
     override suspend fun write(workout: HealthWorkout): HealthWriteResult {
-        val client = client ?: return HealthWriteResult.PermissionMissing
+        // No client means Health Connect is not currently available — an
+        // availability problem, not a permission one, so this must not surface
+        // as "Permission needed" in the UI. Retryable: the next drain re-resolves.
+        val client = resolveClient() ?: return HealthWriteResult.Retryable
         return runCatchingHealth {
             client.insertRecords(workout.toRecords())
         }
     }
 
     override suspend fun delete(clientRecordId: String): HealthWriteResult {
-        val client = client ?: return HealthWriteResult.PermissionMissing
-        return runCatchingHealth {
-            for (type in DELETABLE) {
+        val client = resolveClient() ?: return HealthWriteResult.Retryable
+        // Each record type is guarded on its own so one type throwing does not
+        // abandon the rest — otherwise a failure on the second of three types
+        // would leave the third never attempted. The most conservative outcome
+        // wins: a permission problem takes priority (it stops the whole drain),
+        // then "try again" (safe to re-attempt every type; delete is idempotent),
+        // then "give up on this one" only once nothing is left to retry.
+        var outcome: HealthWriteResult = HealthWriteResult.Success
+        for (type in DELETABLE) {
+            val result = runCatchingHealth {
                 client.deleteRecords(
                     recordType = type,
                     recordIdsList = emptyList(),
                     clientRecordIdsList = listOf(clientRecordId),
                 )
             }
+            outcome = worseOf(outcome, result)
         }
+        return outcome
+    }
+
+    /** Ranks outcomes from most to least conservative; see [delete]. */
+    private fun worseOf(a: HealthWriteResult, b: HealthWriteResult): HealthWriteResult {
+        fun rank(r: HealthWriteResult) = when (r) {
+            is HealthWriteResult.PermissionMissing -> 3
+            is HealthWriteResult.Retryable -> 2
+            is HealthWriteResult.Rejected -> 1
+            is HealthWriteResult.Success -> 0
+        }
+        return if (rank(b) > rank(a)) b else a
     }
 
     /**
