@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — MyRunningApp</title>
+<meta name="description" content="Privacy policy for MyRunningApp, an Android running tracker that stores everything on your device.">
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --panel: #ffffff;
+    --ink: #1b1a18;
+    --muted: #5f5c56;
+    --rule: #e3dfd8;
+    --accent: #2f6d4f;
+    --accent-soft: #eef4f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181a;
+      --panel: #1d2023;
+      --ink: #ecebe8;
+      --muted: #a3a09a;
+      --rule: #2e3236;
+      --accent: #7fc9a3;
+      --accent-soft: #1f2a25;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.75rem; margin-bottom: 2.5rem; }
+  .eyebrow {
+    font-size: .8rem; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 .6rem;
+  }
+  h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); line-height: 1.15; margin: 0 0 .75rem; letter-spacing: -.02em; }
+  .dateline { color: var(--muted); font-size: .95rem; margin: 0; }
+  h2 {
+    font-size: 1.2rem; margin: 2.75rem 0 .85rem; letter-spacing: -.01em;
+    padding-top: 1.5rem; border-top: 1px solid var(--rule);
+  }
+  h2:first-of-type { border-top: 0; padding-top: 0; }
+  h3 { font-size: 1rem; margin: 1.6rem 0 .4rem; }
+  p { margin: 0 0 1rem; }
+  .lede { font-size: 1.08rem; color: var(--muted); }
+  strong { font-weight: 650; }
+  a { color: var(--accent); text-underline-offset: .18em; }
+  ul { margin: 0 0 1rem; padding-left: 1.2rem; }
+  li { margin-bottom: .5rem; }
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0; padding: 1rem 1.15rem; margin: 0 0 1.25rem;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .table-scroll { overflow-x: auto; margin: 0 0 1.25rem; }
+  table { border-collapse: collapse; width: 100%; min-width: 30rem; background: var(--panel); font-size: .95rem; }
+  th, td { text-align: left; padding: .7rem .85rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 650; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  footer { margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">MyRunningApp</p>
+  <h1>Privacy Policy</h1>
+  <p class="dateline">Effective 9 September 2026</p>
+</header>
+
+<p class="lede">MyRunningApp is a personal running tracker for Android. It has no
+accounts, no servers, and no analytics. This policy describes the little that it
+does with your data, and is deliberately specific rather than reassuring.</p>
+
+<h2>What the app collects</h2>
+
+<h3>Location</h3>
+<p>While — and only while — you have a run in progress, the app records your GPS
+position roughly once a second, including latitude, longitude, altitude and
+accuracy. This is the route map and the distance; the app cannot do its job
+without it. Recording starts when you start a run (or its countdown) and stops
+when you finish it.</p>
+
+<h3>Body metrics you enter</h3>
+<p>Weight, height, age and sex, on the profile screen. These are used only to
+estimate calories burned. You may leave them unset; the calorie estimate is then
+less accurate, and nothing else changes.</p>
+
+<h3>Run records</h3>
+<p>Distance, duration, pace, mile splits, calorie estimate and activity type for
+each completed run.</p>
+
+<p>The app collects nothing else. There is no advertising identifier, no device
+fingerprint, no contact list, no usage or crash analytics.</p>
+
+<h2>Where it is stored</h2>
+<p>On your device, in the app's private storage, and nowhere else. There is no
+account to create, no server to sync with, and no copy held by the developer or
+anyone else. Uninstalling the app deletes all of it.</p>
+
+<h2>What leaves your device</h2>
+<p>Three things, each of which you control.</p>
+
+<h3>Map tiles</h3>
+<div class="callout">
+  <p>To draw a map, the app downloads map images from the OpenStreetMap tile
+  servers. Those servers necessarily see requests for the areas you are looking
+  at, which reveals your approximate location to them, along with your IP
+  address. This is how any map that is not shipped inside the app works.</p>
+</div>
+<p>Tiles are cached on the device, so a route you have viewed before draws
+without new requests. OpenStreetMap's own privacy policy governs what they do
+with those requests.</p>
+
+<h3>Health Connect (optional, off by default)</h3>
+<p>If you switch on Health Connect sync and grant permission, the app writes your
+completed workouts — activity type, start and end time, distance, duration, mile
+laps, estimated active calories, and, if you grant the additional route
+permission, the GPS route — into Health Connect on your device. Health Connect is
+Google software, and data you put into it is then governed by Google's terms and
+by whatever permissions you have granted to other apps that read it. The app
+never reads your Health Connect data; it only writes its own runs. Turning the
+setting off stops further writing; data already written stays until you remove it
+in Health Connect.</p>
+
+<h3>Files you export</h3>
+<p>When you tap export, the app writes GPX or JSON files to a location you pick.
+Where those files go next is up to you.</p>
+
+<h2>What is never done</h2>
+<p>Your data is never sold, never used for advertising, never shared with any
+analytics or tracking service, and never transmitted to the developer.</p>
+
+<h2>Permissions and why</h2>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Permission</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Location (precise)</td><td>Records the route and measures distance during a run.</td></tr>
+    <tr><td>Background location <em>(optional)</em></td><td>Keeps recording when the screen is off or the app is not in front. Declining it means tracking works only with the app open.</td></tr>
+    <tr><td>Notifications</td><td>Shows the ongoing-run notification with live stats and controls.</td></tr>
+    <tr><td>Health Connect write <em>(optional)</em></td><td>Writes finished workouts, and optionally their routes, into Health Connect.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Every optional permission can be declined, and the app keeps working without it.</p>
+
+<h2>Deleting your data</h2>
+<ul>
+  <li><strong>One run:</strong> delete it from the history list or the run detail
+  screen. Its route and splits go with it. If the run had been written to Health
+  Connect, that copy is deleted too.</li>
+  <li><strong>Everything:</strong> uninstall the app.</li>
+  <li><strong>Health Connect data:</strong> manage or delete it in the Health
+  Connect app, which can remove data written by this app independently of the app
+  itself.</li>
+</ul>
+
+<h2>Children</h2>
+<p>The app is not directed at children and collects nothing that identifies anyone.</p>
+
+<h2>Changes to this policy</h2>
+<p>Changes will be published on this page with a new effective date. The history
+of every change is public in the app's Git repository.</p>
+
+<h2>Contact</h2>
+<p>Questions, or a privacy problem to report:
+<a href="https://github.com/jjbasken/MyRunningApp/issues">open an issue</a> on the
+project's GitHub repository.</p>
+
+<footer>
+  MyRunningApp is a personal, open-source Android running tracker.
+  <a href="https://github.com/jjbasken/MyRunningApp">Source on GitHub</a>.
+</footer>
+
+</div>
+</body>
+</html>
