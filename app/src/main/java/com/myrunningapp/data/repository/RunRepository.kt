@@ -63,11 +63,11 @@ class RunRepository @Inject constructor(
      * Applies an edit to a finished run.
      *
      * Builds the new row from the existing one via `copy`, the way
-     * [updateActivityType] does, rather than [RunEntity.fromDomain] — that
-     * factory does not carry `healthSyncState`, so building from [Run] alone
-     * would silently reset a synced run to `NOT_SYNCED` in the database while it
-     * is still present in Health Connect, orphaning it on a later delete. Any
-     * edit can change a published field, so it is also re-queued for a rewrite.
+     * [updateActivityType] does, rather than from the [Run] alone: a [Run]
+     * carries none of the health-sync columns, so rebuilding the row from it
+     * would reset a synced run to `NOT_SYNCED` while it is still present in
+     * Health Connect, orphaning it on a later delete. Any edit can change a
+     * published field, so it is also re-queued for a rewrite.
      */
     suspend fun updateRun(run: Run) {
         val existing = runDao.getById(run.id) ?: return
@@ -86,7 +86,7 @@ class RunRepository @Inject constructor(
                 wasRecovered = run.wasRecovered,
             ),
         )
-        healthSyncDao.markState(run.id, HealthSyncState.PENDING)
+        healthSyncDao.markPending(run.id)
         healthSyncScheduler.requestSync()
     }
 
@@ -110,7 +110,7 @@ class RunRepository @Inject constructor(
             ),
         )
         // The label and the published workout must agree, so a correction is a rewrite.
-        healthSyncDao.markState(runId, HealthSyncState.PENDING)
+        healthSyncDao.markPending(runId)
         healthSyncScheduler.requestSync()
     }
 
@@ -262,7 +262,7 @@ class RunRepository @Inject constructor(
         )
         // The run is only worth publishing once it is complete, so the outbox is
         // marked here rather than at startRun.
-        healthSyncDao.markState(runId, HealthSyncState.PENDING)
+        healthSyncDao.markPending(runId)
         healthSyncScheduler.requestSync()
     }
 

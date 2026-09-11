@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "c4881a1c6c4f6811016ddb85c0d8c3a7",
+    "identityHash": "bbde1b26b05860613bc886f1fffa88a1",
     "entities": [
       {
         "tableName": "runs",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER NOT NULL, `activityType` TEXT NOT NULL, `distanceMeters` REAL NOT NULL, `movingDurationSec` INTEGER NOT NULL, `elapsedDurationSec` INTEGER NOT NULL, `avgPaceSecPerMile` REAL NOT NULL, `calories` INTEGER NOT NULL, `weightKgAtRun` REAL NOT NULL, `isInProgress` INTEGER NOT NULL DEFAULT 0, `wasRecovered` INTEGER NOT NULL DEFAULT 0, `healthSyncState` TEXT NOT NULL DEFAULT 'NOT_SYNCED')",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER NOT NULL, `activityType` TEXT NOT NULL, `distanceMeters` REAL NOT NULL, `movingDurationSec` INTEGER NOT NULL, `elapsedDurationSec` INTEGER NOT NULL, `avgPaceSecPerMile` REAL NOT NULL, `calories` INTEGER NOT NULL, `weightKgAtRun` REAL NOT NULL, `isInProgress` INTEGER NOT NULL DEFAULT 0, `wasRecovered` INTEGER NOT NULL DEFAULT 0, `healthSyncState` TEXT NOT NULL DEFAULT 'NOT_SYNCED', `healthSyncVersion` INTEGER NOT NULL DEFAULT 0)",
         "fields": [
           {
             "fieldPath": "id",
@@ -88,6 +88,13 @@
             "affinity": "TEXT",
             "notNull": true,
             "defaultValue": "'NOT_SYNCED'"
+          },
+          {
+            "fieldPath": "healthSyncVersion",
+            "columnName": "healthSyncVersion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           }
         ],
         "primaryKey": {
@@ -329,7 +336,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c4881a1c6c4f6811016ddb85c0d8c3a7')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'bbde1b26b05860613bc886f1fffa88a1')"
     ]
   }
 }

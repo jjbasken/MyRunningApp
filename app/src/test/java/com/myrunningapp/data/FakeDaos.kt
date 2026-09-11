@@ -90,14 +90,37 @@ internal class FakeProfileDao(private val profile: Profile) : ProfileDao {
 internal class FakeHealthSyncDao(private val runDao: FakeRunDao) : HealthSyncDao {
     val deletions = linkedMapOf<Long, HealthDeletionEntity>()
 
-    override suspend fun pendingRuns(limit: Int): List<RunEntity> =
-        runDao.rows.values
-            .filter { it.healthSyncState == HealthSyncState.PENDING && !it.isInProgress }
-            .sortedBy { it.startedAt }
-            .take(limit)
+    override suspend fun pendingRunsAfter(
+        afterStartedAt: Long,
+        afterId: Long,
+        limit: Int,
+    ): List<RunEntity> = runDao.rows.values
+        .filter { it.healthSyncState == HealthSyncState.PENDING && !it.isInProgress }
+        .filter {
+            val startedAt = it.startedAt.toEpochMilli()
+            startedAt > afterStartedAt || (startedAt == afterStartedAt && it.id > afterId)
+        }
+        .sortedWith(compareBy({ it.startedAt }, { it.id }))
+        .take(limit)
 
     override suspend fun markState(runId: Long, state: HealthSyncState) {
         runDao.rows[runId]?.let { runDao.rows[runId] = it.copy(healthSyncState = state) }
+    }
+
+    override suspend fun markPending(runId: Long) {
+        runDao.rows[runId]?.let {
+            runDao.rows[runId] = it.copy(
+                healthSyncState = HealthSyncState.PENDING,
+                healthSyncVersion = it.healthSyncVersion + 1,
+            )
+        }
+    }
+
+    override suspend fun markOutcome(runId: Long, state: HealthSyncState, version: Long) {
+        val row = runDao.rows[runId] ?: return
+        if (row.healthSyncState != HealthSyncState.PENDING) return
+        if (row.healthSyncVersion != version) return
+        runDao.rows[runId] = row.copy(healthSyncState = state)
     }
 
     override suspend fun markAllPending(): Int = mark(HealthSyncState.NOT_SYNCED)
@@ -108,7 +131,12 @@ internal class FakeHealthSyncDao(private val runDao: FakeRunDao) : HealthSyncDao
         val hits = runDao.rows.values.filter {
             it.healthSyncState == from && !it.isInProgress
         }
-        hits.forEach { runDao.rows[it.id] = it.copy(healthSyncState = HealthSyncState.PENDING) }
+        hits.forEach {
+            runDao.rows[it.id] = it.copy(
+                healthSyncState = HealthSyncState.PENDING,
+                healthSyncVersion = it.healthSyncVersion + 1,
+            )
+        }
         return hits.size
     }
 

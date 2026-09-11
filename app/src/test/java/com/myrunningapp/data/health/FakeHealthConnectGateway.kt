@@ -23,7 +23,11 @@ class FakeHealthConnectGateway(
 
     override suspend fun hasRoutePermission(): Boolean = routePermission
 
+    /** Runs while a write is "in flight", to stand in for something racing it. */
+    var onWrite: (suspend () -> Unit)? = null
+
     override suspend fun write(workout: HealthWorkout): HealthWriteResult {
+        onWrite?.invoke()
         val result = writeResults.removeFirstOrNull() ?: HealthWriteResult.Success
         if (result is HealthWriteResult.Success) written += workout
         return result

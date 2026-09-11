@@ -168,6 +168,10 @@ class AppDatabaseTest {
             assertEquals(id, recovered.id)
             assertFalse(recovered.isInProgress)
             assertTrue(recovered.wasRecovered)
+            // finishRun never ran for this row, so recovery is the only thing
+            // that can queue it; without that it would never reach Health Connect.
+            assertEquals(HealthSyncState.PENDING, recovered.healthSyncState)
+            assertEquals(1L, recovered.healthSyncVersion)
             assertEquals(100.0, recovered.distanceMeters, 0.0)
             assertEquals(30L, recovered.movingDurationSec)
             assertEquals(60L, recovered.elapsedDurationSec)
@@ -246,7 +250,7 @@ class AppDatabaseTest {
             )
             helper.close()
             db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
                 .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
             val run = db.runDao().observeAll().first().single()
             assertEquals(100.0, run.distanceMeters, 0.0)
@@ -279,8 +283,16 @@ class AppDatabaseTest {
                         )
                         val entities = schema.getJSONObject("database").getJSONArray("entities")
                         for (i in 0 until entities.length()) {
-                            db.execSQL(entities.getJSONObject(i).getString("createSql")
-                                .replace("\${TABLE_NAME}", entities.getJSONObject(i).getString("tableName")))
+                            val entity = entities.getJSONObject(i)
+                            val table = entity.getString("tableName")
+                            db.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", table))
+                            // Indices too: Room validates them on migration, so a
+                            // table built from createSql alone fails the upgrade.
+                            val indices = entity.getJSONArray("indices")
+                            for (j in 0 until indices.length()) {
+                                db.execSQL(indices.getJSONObject(j).getString("createSql")
+                                    .replace("\${TABLE_NAME}", table))
+                            }
                         }
                     }
 
@@ -298,6 +310,7 @@ class AppDatabaseTest {
 
             val run = db.runDao().getById(1)!!
             assertEquals(HealthSyncState.NOT_SYNCED, run.healthSyncState)
+            assertEquals(0L, run.healthSyncVersion)
             assertEquals(100.0, run.distanceMeters, 0.0)
             assertTrue(db.healthSyncDao().pendingDeletions().isEmpty())
         } finally {

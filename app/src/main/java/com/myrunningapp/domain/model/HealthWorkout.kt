@@ -13,6 +13,12 @@ import java.time.Instant
 data class HealthWorkout(
     /** Stable per-run id. Health Connect upserts on it, so a rewrite is not a duplicate. */
     val clientRecordId: String,
+    /**
+     * Rises with every re-queue of the run. Health Connect keeps whichever copy
+     * of a [clientRecordId] carries the higher version, so reusing one would let
+     * it discard a rewrite and leave an edit unpublished.
+     */
+    val clientRecordVersion: Long,
     val activityType: ActivityType,
     val startedAt: Instant,
     val endedAt: Instant,

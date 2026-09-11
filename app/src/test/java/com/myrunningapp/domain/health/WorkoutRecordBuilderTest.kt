@@ -41,14 +41,14 @@ class WorkoutRecordBuilderTest {
 
     @Test
     fun `client record id is the run id`() {
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0)), false)
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0)), false, clientRecordVersion = 1L)
 
         assertEquals("run-42", workout!!.clientRecordId)
     }
 
     @Test
     fun `the session spans elapsed time, pauses included`() {
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0)), false)!!
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0)), false, clientRecordVersion = 1L)!!
 
         assertEquals(t0, workout.startedAt)
         assertEquals(t0.plusSeconds(1200), workout.endedAt)
@@ -57,14 +57,17 @@ class WorkoutRecordBuilderTest {
     @Test
     fun `a walk is built as a walk`() {
         val workout = WorkoutRecordBuilder
-            .build(run(activityType = ActivityType.WALK), emptyList(), listOf(point(0)), false)!!
+            .build(
+                run(activityType = ActivityType.WALK), emptyList(), listOf(point(0)), false,
+                clientRecordVersion = 1L,
+            )!!
 
         assertEquals(ActivityType.WALK, workout.activityType)
     }
 
     @Test
     fun `calories map to the run's estimate`() {
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0)), false)!!
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0)), false, clientRecordVersion = 1L)!!
 
         assertEquals(320, workout.activeCalories)
     }
@@ -73,7 +76,7 @@ class WorkoutRecordBuilderTest {
     fun `pause gaps become separate segments`() {
         val points = listOf(point(0), point(100), point(400, 1), point(1200, 1))
 
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, false)!!
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, false, clientRecordVersion = 1L)!!
 
         assertEquals(2, workout.segments.size)
         assertEquals(t0.plusSeconds(100), workout.segments[0].endedAt)
@@ -85,7 +88,7 @@ class WorkoutRecordBuilderTest {
         val splits = listOf(split(1, 540), split(2, 540))
         val points = listOf(point(0), point(1080))
 
-        val workout = WorkoutRecordBuilder.build(run(), splits, points, false)!!
+        val workout = WorkoutRecordBuilder.build(run(), splits, points, false, clientRecordVersion = 1L)!!
 
         assertEquals(2, workout.laps.size)
         assertEquals(t0, workout.laps[0].startedAt)
@@ -100,7 +103,7 @@ class WorkoutRecordBuilderTest {
         // Moving time is 1080 s but the run took 1200 s: a 120 s pause at 540 s.
         val points = listOf(point(0), point(540), point(660, 1), point(1200, 1))
 
-        val workout = WorkoutRecordBuilder.build(run(), splits, points, false)!!
+        val workout = WorkoutRecordBuilder.build(run(), splits, points, false, clientRecordVersion = 1L)!!
 
         assertTrue(workout.laps.all { !it.startedAt.isBefore(workout.startedAt) })
         assertTrue(workout.laps.all { !it.endedAt.isAfter(workout.endedAt) })
@@ -113,14 +116,19 @@ class WorkoutRecordBuilderTest {
         val splits = listOf(split(1, 540), split(2, 200, distanceMeters = 600.0))
 
         val workout = WorkoutRecordBuilder
-            .build(run(distanceMeters = 2209.34, movingDurationSec = 740), splits, listOf(point(0), point(740)), false)!!
+            .build(
+                run(distanceMeters = 2209.34, movingDurationSec = 740), splits,
+                listOf(point(0), point(740)), false, clientRecordVersion = 1L,
+            )!!
 
         assertEquals(600.0, workout.laps[1].distanceMeters, 0.001)
     }
 
     @Test
     fun `the route is omitted when it is not being shared`() {
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), listOf(point(0), point(10)), false)!!
+        val workout = WorkoutRecordBuilder.build(
+            run(), emptyList(), listOf(point(0), point(10)), false, clientRecordVersion = 1L,
+        )!!
 
         assertTrue(workout.route.isEmpty())
     }
@@ -129,7 +137,7 @@ class WorkoutRecordBuilderTest {
     fun `the route carries every fix when it is being shared`() {
         val points = listOf(point(0), point(10), point(20))
 
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, true)!!
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, true, clientRecordVersion = 1L)!!
 
         assertEquals(3, workout.route.size)
         assertEquals(t0, workout.route.first().time)
@@ -141,7 +149,9 @@ class WorkoutRecordBuilderTest {
         val elapsed = 1200L
         val points = listOf(point(0), point(elapsed))
 
-        val workout = WorkoutRecordBuilder.build(run(elapsedDurationSec = elapsed), emptyList(), points, true)!!
+        val workout = WorkoutRecordBuilder.build(
+            run(elapsedDurationSec = elapsed), emptyList(), points, true, clientRecordVersion = 1L,
+        )!!
 
         assertEquals(1, workout.route.size)
         assertEquals(t0, workout.route.first().time)
@@ -151,7 +161,7 @@ class WorkoutRecordBuilderTest {
     fun `a route point exactly on startedAt is kept`() {
         val points = listOf(point(0), point(10))
 
-        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, true)!!
+        val workout = WorkoutRecordBuilder.build(run(), emptyList(), points, true, clientRecordVersion = 1L)!!
 
         assertTrue(workout.route.any { it.time == t0 })
     }
@@ -162,7 +172,7 @@ class WorkoutRecordBuilderTest {
         val points = listOf(point(0), point(1080))
 
         val workout = WorkoutRecordBuilder
-            .build(run(movingDurationSec = 1080), splits, points, false)!!
+            .build(run(movingDurationSec = 1080), splits, points, false, clientRecordVersion = 1L)!!
 
         assertEquals(2, workout.laps.size)
         assertEquals(t0, workout.laps[0].startedAt)
@@ -175,6 +185,6 @@ class WorkoutRecordBuilderTest {
     fun `a run that never moved is not worth writing`() {
         val zeroLength = run(distanceMeters = 0.0, movingDurationSec = 0, elapsedDurationSec = 0)
 
-        assertNull(WorkoutRecordBuilder.build(zeroLength, emptyList(), emptyList(), false))
+        assertNull(WorkoutRecordBuilder.build(zeroLength, emptyList(), emptyList(), false, clientRecordVersion = 1L))
     }
 }

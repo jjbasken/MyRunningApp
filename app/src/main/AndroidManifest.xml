@@ -64,17 +64,34 @@
 
         <!--
             Health Connect links here to explain why the app wants health
-            permissions. Two intent filters because Android 14 changed the
-            action; both point at the same screen.
+            permissions. Android 14 changed the action, so there are two
+            declarations pointing at the same screen - and they must stay
+            separate, because only the Android 14+ one may be permission-guarded.
+
+            Through Android 13 the intent comes from the Health Connect APK
+            itself, an ordinary app that does not hold
+            START_VIEW_PERMISSION_USAGE; guarding this filter with it would have
+            the platform refuse the start and the privacy-policy link would
+            silently do nothing on every device below 14.
         -->
         <activity-alias
             android:name=".HealthPermissionsRationaleActivity"
             android:exported="true"
-            android:targetActivity=".MainActivity"
-            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
+        </activity-alias>
+
+        <!--
+            Android 14+, where the sender is the system permission controller.
+            Guarded, as the platform requires for this action.
+        -->
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />

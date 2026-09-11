@@ -21,12 +21,16 @@ object WorkoutRecordBuilder {
      * Returns null for a run with nothing in it. A zero-length session is
      * rejected by Health Connect anyway, and a run that never moved is not a
      * workout worth publishing.
+     *
+     * [clientRecordVersion] comes from the run's own row rather than being
+     * derived here: it has to rise across calls, which nothing in a [Run] does.
      */
     fun build(
         run: Run,
         splits: List<Split>,
         points: List<RunPoint>,
         includeRoute: Boolean,
+        clientRecordVersion: Long,
     ): HealthWorkout? {
         if (!run.endedAt.isAfter(run.startedAt)) return null
         if (run.distanceMeters <= 0.0) return null
@@ -51,6 +55,7 @@ object WorkoutRecordBuilder {
 
         return HealthWorkout(
             clientRecordId = healthClientRecordId(run.id),
+            clientRecordVersion = clientRecordVersion,
             activityType = run.activityType,
             startedAt = run.startedAt,
             endedAt = run.endedAt,

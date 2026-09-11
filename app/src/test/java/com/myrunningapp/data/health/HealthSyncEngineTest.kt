@@ -243,19 +243,65 @@ class HealthSyncEngineTest {
     }
 
     @Test
-    fun `a full page that makes no progress stops rather than looping forever`() = runTest {
+    fun `a full page of retryable writes does not loop forever`() = runTest {
         // 51 pending runs (more than one page), every write Retryable: nothing
-        // ever leaves PENDING, so a naive re-fetch of the same full page would
-        // spin. The loop must stop after the first page once it sees the page
-        // made no progress, and report RETRY_LATER for the worker's own backoff.
+        // ever leaves PENDING. The cursor is what stops this from spinning on
+        // the same page, and it also means every run is still attempted once.
         val ids = (1L..51L).map { pendingRun(id = it) }
         ids.forEach { _ -> gateway.writeResults.addLast(HealthWriteResult.Retryable) }
 
         assertEquals(HealthSyncOutcome.RETRY_LATER, engine.sync())
 
         ids.forEach { assertEquals(HealthSyncState.PENDING, stateOf(it)) }
-        // Only the first (50-run) page was attempted; the 51st queued result
-        // for the run the loop never reached is still sitting unconsumed.
-        assertEquals(1, gateway.writeResults.size)
+        assertEquals(0, gateway.writeResults.size)
+    }
+
+    @Test
+    fun `a page of stuck runs does not starve the runs behind it`() = runTest {
+        // A page's worth of runs that always come back Retryable sit at the head
+        // of the queue forever. Asking repeatedly for "the oldest pending runs"
+        // would hand back only those, and nothing recorded afterwards could ever
+        // be published; paging past them reaches the newer run in the same drain.
+        val stuck = (1L..50L).map { pendingRun(id = it) }
+        val newer = pendingRun(id = 51)
+        stuck.forEach { _ -> gateway.writeResults.addLast(HealthWriteResult.Retryable) }
+
+        assertEquals(HealthSyncOutcome.RETRY_LATER, engine.sync())
+
+        stuck.forEach { assertEquals(HealthSyncState.PENDING, stateOf(it)) }
+        assertEquals(HealthSyncState.SYNCED, stateOf(newer))
+        assertEquals(listOf("run-$newer"), gateway.written.map { it.clientRecordId })
+    }
+
+    @Test
+    fun `the published record version rises with every re-queue`() = runTest {
+        val id = pendingRun(id = 1)
+        healthSyncDao.markPending(id)
+
+        engine.sync()
+        val first = gateway.written.single().clientRecordVersion
+
+        healthSyncDao.markPending(id)
+        engine.sync()
+
+        val second = gateway.written.last().clientRecordVersion
+        // Health Connect keeps the higher-versioned copy of a client record id,
+        // so a rewrite that reused the version could be discarded outright.
+        assertTrue("$second should outrank $first", second > first)
+    }
+
+    @Test
+    fun `an edit landing mid-write is not buried by the write it raced`() = runTest {
+        val id = pendingRun(id = 1)
+        healthSyncDao.markPending(id)
+        // The gateway stands in for the moment the write is in flight: the user
+        // corrects the run while it is out, which re-queues it at a new version.
+        gateway.onWrite = { healthSyncDao.markPending(id) }
+
+        engine.sync()
+
+        // The verdict describes a copy that is already stale, so it must not
+        // land - the run stays queued and the edit gets published next drain.
+        assertEquals(HealthSyncState.PENDING, stateOf(id))
     }
 }

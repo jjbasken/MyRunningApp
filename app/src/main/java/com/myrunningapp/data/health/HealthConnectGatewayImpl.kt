@@ -138,6 +138,11 @@ class HealthConnectGatewayImpl @Inject constructor(
         val metadata = Metadata.activelyRecorded(
             device = Device(type = Device.TYPE_PHONE),
             clientRecordId = clientRecordId,
+            // Rises with every re-queue of the run. Health Connect retains
+            // whichever copy of a client record id carries the higher version,
+            // so leaving this at its default would let it discard a rewrite —
+            // an edit that never lands while the row is marked SYNCED.
+            clientRecordVersion = clientRecordVersion,
         )
         val session = ExerciseSessionRecord(
             startTime = startedAt,

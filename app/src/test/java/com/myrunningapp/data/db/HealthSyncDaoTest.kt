@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -38,12 +39,15 @@ class HealthSyncDaoTest {
     private suspend fun insertRun(
         state: HealthSyncState = HealthSyncState.NOT_SYNCED,
         inProgress: Boolean = false,
+        startedAt: Instant = t0,
+        version: Long = 0,
     ): Long = db.runDao().insert(
         RunEntity(
-            startedAt = t0, endedAt = t0.plusSeconds(600), activityType = ActivityType.RUN,
+            startedAt = startedAt, endedAt = startedAt.plusSeconds(600),
+            activityType = ActivityType.RUN,
             distanceMeters = 1609.34, movingDurationSec = 600, elapsedDurationSec = 600,
             avgPaceSecPerMile = 600.0, calories = 120, weightKgAtRun = 70.0,
-            isInProgress = inProgress, healthSyncState = state,
+            isInProgress = inProgress, healthSyncState = state, healthSyncVersion = version,
         ),
     )
 
@@ -170,5 +174,87 @@ class HealthSyncDaoTest {
 
         assertEquals(0, db.healthSyncDao().retryFailed())
         assertTrue(db.healthSyncDao().pendingRuns().isEmpty())
+    }
+
+    @Test
+    fun `queueing a run bumps its version so the rewrite outranks what is stored`() = runTest {
+        val id = insertRun(HealthSyncState.SYNCED, version = 3)
+
+        db.healthSyncDao().markPending(id)
+
+        val row = db.runDao().getById(id)!!
+        assertEquals(HealthSyncState.PENDING, row.healthSyncState)
+        assertEquals(4L, row.healthSyncVersion)
+    }
+
+    @Test
+    fun `the backfill and Sync now bump versions too`() = runTest {
+        val fresh = insertRun(HealthSyncState.NOT_SYNCED, version = 1)
+        val failed = insertRun(HealthSyncState.FAILED, version = 7)
+
+        db.healthSyncDao().markAllPending()
+        db.healthSyncDao().retryFailed()
+
+        assertEquals(2L, db.runDao().getById(fresh)!!.healthSyncVersion)
+        assertEquals(8L, db.runDao().getById(failed)!!.healthSyncVersion)
+    }
+
+    @Test
+    fun `an outcome lands when the run is still the one that was written`() = runTest {
+        val id = insertRun(HealthSyncState.PENDING, version = 2)
+
+        db.healthSyncDao().markOutcome(id, HealthSyncState.SYNCED, version = 2)
+
+        assertEquals(HealthSyncState.SYNCED, db.runDao().getById(id)!!.healthSyncState)
+    }
+
+    @Test
+    fun `an outcome is refused once an edit has re-queued the run`() = runTest {
+        val id = insertRun(HealthSyncState.PENDING, version = 2)
+        // The edit that landed while the write was in flight.
+        db.healthSyncDao().markPending(id)
+
+        db.healthSyncDao().markOutcome(id, HealthSyncState.SYNCED, version = 2)
+
+        // Still queued, so the edit gets published rather than buried.
+        assertEquals(HealthSyncState.PENDING, db.runDao().getById(id)!!.healthSyncState)
+        assertEquals(3L, db.runDao().getById(id)!!.healthSyncVersion)
+    }
+
+    @Test
+    fun `a run deleted mid-write takes its outcome with it`() = runTest {
+        val id = insertRun(HealthSyncState.PENDING, version = 1)
+        db.runDao().deleteById(id)
+
+        db.healthSyncDao().markOutcome(id, HealthSyncState.SYNCED, version = 1)
+
+        assertNull(db.runDao().getById(id))
+    }
+
+    @Test
+    fun `paging past a stuck page reaches the runs behind it`() = runTest {
+        val stuck = insertRun(HealthSyncState.PENDING, startedAt = t0)
+        val newer = insertRun(HealthSyncState.PENDING, startedAt = t0.plusSeconds(3_600))
+
+        // One run per page, and the first one never leaves PENDING: asking again
+        // for "the oldest pending run" would return it forever.
+        assertEquals(listOf(stuck), db.healthSyncDao().pendingRuns(limit = 1).map { it.id })
+        val next = db.healthSyncDao().pendingRunsAfter(
+            afterStartedAt = t0.toEpochMilli(), afterId = stuck, limit = 1,
+        )
+
+        assertEquals(listOf(newer), next.map { it.id })
+    }
+
+    @Test
+    fun `runs sharing a start time are still paged past one at a time`() = runTest {
+        val first = insertRun(HealthSyncState.PENDING, startedAt = t0)
+        val second = insertRun(HealthSyncState.PENDING, startedAt = t0)
+
+        val next = db.healthSyncDao().pendingRunsAfter(
+            afterStartedAt = t0.toEpochMilli(), afterId = first, limit = 10,
+        )
+
+        assertEquals(listOf(second), next.map { it.id })
     }
 }

@@ -54,6 +54,9 @@ abstract class AppDatabase : RoomDatabase() {
                     "ALTER TABLE runs ADD COLUMN healthSyncState TEXT NOT NULL DEFAULT 'NOT_SYNCED'",
                 )
                 db.execSQL(
+                    "ALTER TABLE runs ADD COLUMN healthSyncVersion INTEGER NOT NULL DEFAULT 0",
+                )
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS health_deletions (
                         runId INTEGER NOT NULL PRIMARY KEY,
@@ -64,10 +67,33 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /** Runs only when the process opens its singleton database, before any new run starts. */
+        /**
+         * Runs only when the process opens its singleton database, before any new run starts.
+         *
+         * A salvaged run is a finished run, so it joins the Health Connect
+         * outbox here the way [com.myrunningapp.data.repository.RunRepository.finishRun]
+         * would have: `finishRun` never ran for these rows, and nothing else
+         * would ever queue them, so without this a run interrupted by a process
+         * death is silently never published while the settings screen reports
+         * everything up to date. `PENDING` regardless of the toggle matches
+         * `finishRun` — the engine simply leaves the queue alone while sync is
+         * off. Only rows still `NOT_SYNCED` are touched, so this cannot undo a
+         * state the engine already reached.
+         */
         val RECOVER_INTERRUPTED_RUNS = object : Callback() {
             override fun onOpen(db: SupportSQLiteDatabase) {
-                db.execSQL("UPDATE runs SET isInProgress = 0, wasRecovered = 1 WHERE isInProgress = 1")
+                db.execSQL(
+                    """
+                    UPDATE runs SET
+                        isInProgress = 0,
+                        wasRecovered = 1,
+                        healthSyncState = CASE healthSyncState
+                            WHEN 'NOT_SYNCED' THEN 'PENDING' ELSE healthSyncState END,
+                        healthSyncVersion = CASE healthSyncState
+                            WHEN 'NOT_SYNCED' THEN healthSyncVersion + 1 ELSE healthSyncVersion END
+                    WHERE isInProgress = 1
+                    """.trimIndent(),
+                )
             }
         }
 
