@@ -183,7 +183,7 @@ class HealthConnectGatewayImpl @Inject constructor(
             },
             metadata = metadata,
         )
-        return listOf(
+        return listOf<Record>(
             session,
             DistanceRecord(
                 startTime = startedAt, startZoneOffset = zone,
