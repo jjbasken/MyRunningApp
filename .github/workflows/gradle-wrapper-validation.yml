@@ -1,0 +1,35 @@
+name: Gradle Wrapper Validation
+
+# Verifies that gradle/wrapper/gradle-wrapper.jar is a jar published by
+# Gradle and not a modified or attacker-supplied one. The wrapper jar is
+# executable code that every build and every developer machine runs, so it
+# is checked on each push and pull request rather than only on release.
+#
+# This complements the distributionSha256Sum pin in
+# gradle/wrapper/gradle-wrapper.properties: that pin covers the Gradle
+# distribution the wrapper downloads, while this job covers the wrapper jar
+# committed to the repository.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: Validate wrapper jar
+    runs-on: ubuntu-latest
+    steps:
+      # Third-party actions are pinned to a commit SHA: a mutable tag could
+      # be repointed at other code, which would defeat the purpose of a
+      # supply-chain check.
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
