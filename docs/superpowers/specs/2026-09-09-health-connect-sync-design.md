@@ -44,7 +44,7 @@ a pure decision pulled out of each Android-facing piece:
 data/health/
   HealthConnectGateway.kt       interface: availability, permissions, write, delete
   HealthConnectGatewayImpl.kt   the only type that mentions androidx.health
-  WorkoutRecordBuilder.kt       pure: (Run, Splits, Points) -> HealthWorkout
+  WorkoutRecordBuilder.kt       pure: (Run, Splits, Points) -> HealthWorkout?
   HealthSyncEngine.kt           drains the outbox; owns retry + state transitions
   HealthSyncWorker.kt           WorkManager shell around the engine
   HealthSyncStatus.kt           pure: (sdk status, toggle, permissions, counts) -> UI state
@@ -70,6 +70,7 @@ Room `version = 2` -> `3`.
 | State | Meaning |
 |---|---|
 | `NOT_SYNCED` | Never queued. The state of every row after the migration. |
+| `NOT_APPLICABLE` | Nothing publishable in it — no distance, or no duration, so the builder returns null. Excluded from every count and from *Sync now*, so a run that can never be published does not sit in the failure count forever. Added 2026-09-10 during the final review. |
 | `PENDING` | Queued for write. Set by `finishRun`, by `updateActivityType`, and by backfill. |
 | `SYNCED` | Written to Health Connect. |
 | `FAILED` | Rejected for a reason retrying will not fix. Surfaced in settings; retried only by *Sync now*. |
@@ -191,8 +192,10 @@ of the engine. Surfaced in settings; never nagged about.
 **Settings screen** gains one section:
 
 - Master toggle, **off by default**.
-- Status line: `Synced 42 runs` / `3 waiting` / `Permission needed` /
-  `Health Connect not installed`.
+- Status line: `Synced 42 runs` / `3 waiting` / `Permission needed`. There is no
+  "not installed" line: when Health Connect is absent the whole section is hidden,
+  per the availability rule above. (Corrected 2026-09-10 — the original draft listed
+  both, which contradicted itself; the implementation hides, which is the better call.)
 - Manual **Sync now** (also the only retry path for `FAILED` rows).
 - Switching the toggle off stops future syncing and leaves already-written data
   alone, with a line saying so.

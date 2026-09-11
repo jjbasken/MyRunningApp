@@ -1,21 +1,17 @@
 package com.myrunningapp.data.repository
 
-import com.myrunningapp.data.db.dao.ProfileDao
-import com.myrunningapp.data.db.dao.RunDao
-import com.myrunningapp.data.db.dao.RunPointDao
-import com.myrunningapp.data.db.dao.SplitDao
-import com.myrunningapp.data.db.entity.ProfileEntity
-import com.myrunningapp.data.db.entity.RunEntity
-import com.myrunningapp.data.db.entity.RunPointEntity
-import com.myrunningapp.data.db.entity.SplitEntity
+import com.myrunningapp.data.FakeHealthSyncDao
+import com.myrunningapp.data.FakeProfileDao
+import com.myrunningapp.data.FakeRunDao
+import com.myrunningapp.data.FakeRunPointDao
+import com.myrunningapp.data.FakeSplitDao
 import com.myrunningapp.domain.calories.CalorieCalculator
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.domain.tracking.RunSnapshot
 import com.myrunningapp.domain.model.RunSessionState
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,6 +36,8 @@ class RunRepositoryCaloriesTest {
         runPointDao = FakeRunPointDao(),
         splitDao = FakeSplitDao(),
         profileRepository = ProfileRepository(FakeProfileDao(currentProfile)),
+        healthSyncDao = FakeHealthSyncDao(runDao),
+        healthSyncScheduler = mockk(relaxed = true),
     )
 
     private fun snapshot(distanceMeters: Double, movingDurationSec: Long) = RunSnapshot(
@@ -115,49 +113,5 @@ class RunRepositoryCaloriesTest {
         repository.finishRun(id, snapshot(5000.0, 1500), startedAt.plusSeconds(1500))
         repository.deleteRun(id)
         assertEquals(null, runDao.getById(id))
-    }
-
-    // --- fakes ---------------------------------------------------------------
-
-    private class FakeRunDao : RunDao {
-        val rows = mutableMapOf<Long, RunEntity>()
-        private var nextId = 1L
-
-        override fun observeAll(): Flow<List<RunEntity>> = flowOf(rows.values.filter { !it.isInProgress })
-        override fun observeById(runId: Long): Flow<RunEntity?> = flowOf(rows[runId])
-        override suspend fun getById(runId: Long): RunEntity? = rows[runId]
-        override suspend fun insert(run: RunEntity): Long {
-            val id = nextId++
-            rows[id] = run.copy(id = id)
-            return id
-        }
-        override suspend fun update(run: RunEntity) { rows[run.id] = run }
-        override suspend fun delete(run: RunEntity) { rows.remove(run.id) }
-        override suspend fun deleteById(runId: Long) {
-            if (rows[runId]?.isInProgress == false) rows.remove(runId)
-        }
-        override suspend fun insertCheckpointPoints(points: List<RunPointEntity>) = Unit
-        override suspend fun insertCheckpointSplits(splits: List<SplitEntity>) = Unit
-        override suspend fun clearCheckpointSplits(runId: Long) = Unit
-    }
-
-    private class FakeRunPointDao : RunPointDao {
-        override fun observeForRun(runId: Long): Flow<List<RunPointEntity>> = flowOf(emptyList())
-        override suspend fun getForRun(runId: Long): List<RunPointEntity> = emptyList()
-        override suspend fun insert(point: RunPointEntity): Long = 0L
-        override suspend fun insertAll(points: List<RunPointEntity>) = Unit
-        override suspend fun countForRun(runId: Long): Int = 0
-    }
-
-    private class FakeSplitDao : SplitDao {
-        override fun observeForRun(runId: Long): Flow<List<SplitEntity>> = flowOf(emptyList())
-        override suspend fun getForRun(runId: Long): List<SplitEntity> = emptyList()
-        override suspend fun insert(split: SplitEntity): Long = 0L
-    }
-
-    private class FakeProfileDao(private val profile: Profile) : ProfileDao {
-        override fun observe(): Flow<ProfileEntity?> = flowOf(ProfileEntity.fromDomain(profile))
-        override suspend fun get(): ProfileEntity = ProfileEntity.fromDomain(profile)
-        override suspend fun upsert(profile: ProfileEntity) = Unit
     }
 }

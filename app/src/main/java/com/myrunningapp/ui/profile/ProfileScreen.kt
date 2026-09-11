@@ -1,5 +1,9 @@
 package com.myrunningapp.ui.profile
 
+import android.content.Context
+import android.content.Intent
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,18 +39,24 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
 import com.myrunningapp.data.export.RunExporter
 import com.myrunningapp.domain.Units
+import com.myrunningapp.domain.health.HealthSyncUiState
 import com.myrunningapp.domain.model.CountdownLength
 import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.ui.export.DocumentExportEffect
+import com.myrunningapp.ui.health.HealthSyncSection
 import com.myrunningapp.ui.theme.MyRunningTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -56,7 +66,19 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val savedMessage = stringResource(R.string.profile_saved)
+
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract(),
+    ) { granted -> viewModel.onHealthPermissionResult(granted) }
+
+    // Re-read on every resume: a trip to Health Connect's own settings changes
+    // permission state without ever calling back into a launcher.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshHealthState()
+        onPauseOrDispose { }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
@@ -93,7 +115,35 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         onKeepScreenOnChange = viewModel::setKeepScreenOn,
         onPaceColorChange = viewModel::setColorRouteByPace,
         onExportAll = viewModel::exportEverything,
+        onHealthToggle = { enabled ->
+            viewModel.setHealthSyncEnabled(enabled)
+            if (enabled && !state.preferences.healthPermissionAsked) {
+                healthPermissionLauncher.launch(viewModel.healthPermissionsToRequest)
+            }
+        },
+        onHealthRequestPermission = {
+            // Android stops showing the dialog after two declines; once the ask is
+            // spent, Health Connect's own settings are the only way through.
+            if (state.preferences.healthPermissionAsked) {
+                openHealthConnectSettings(context)
+            } else {
+                healthPermissionLauncher.launch(viewModel.healthPermissionsToRequest)
+            }
+        },
+        onHealthSyncNow = viewModel::syncNow,
+        onOpenHealthConnect = { openHealthConnectSettings(context) },
     )
+}
+
+/**
+ * Opens Health Connect's own settings screen. A stale or old provider may not
+ * export this action — falling back to doing nothing beats crashing the app
+ * from a settings link.
+ */
+private fun openHealthConnectSettings(context: Context) {
+    runCatching {
+        context.startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
+    }.onFailure { e -> Log.w("ProfileScreen", "Could not open Health Connect settings", e) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +157,10 @@ private fun ProfileContent(
     onKeepScreenOnChange: (Boolean) -> Unit,
     onPaceColorChange: (Boolean) -> Unit,
     onExportAll: () -> Unit,
+    onHealthToggle: (Boolean) -> Unit,
+    onHealthRequestPermission: () -> Unit,
+    onHealthSyncNow: () -> Unit,
+    onOpenHealthConnect: () -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.profile_title)) }) },
@@ -221,6 +275,15 @@ private fun ProfileContent(
                 onCheckedChange = onPaceColorChange,
             )
 
+            HealthSyncSection(
+                state = state.healthSync,
+                enabled = state.healthSync !is HealthSyncUiState.Off,
+                onToggle = onHealthToggle,
+                onRequestPermission = onHealthRequestPermission,
+                onSyncNow = onHealthSyncNow,
+                onOpenHealthConnect = onOpenHealthConnect,
+            )
+
             Spacer(Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(Modifier.height(16.dp))
@@ -301,6 +364,10 @@ private fun ProfileContentPreview() {
             onKeepScreenOnChange = {},
             onPaceColorChange = {},
             onExportAll = {},
+            onHealthToggle = {},
+            onHealthRequestPermission = {},
+            onHealthSyncNow = {},
+            onOpenHealthConnect = {},
         )
     }
 }

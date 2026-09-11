@@ -1,0 +1,72 @@
+name: Build and Test
+
+# Compiles the app and runs the JVM unit tests. There are no instrumented
+# tests in app/src/androidTest, so no emulator is needed here; if any are
+# added later they belong in a separate job with a device matrix.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a pull request makes the in-flight run obsolete. Runs on
+  # main are never cancelled, so main keeps a complete history of results.
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: Assemble and unit test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Third-party actions are pinned to a commit SHA: a mutable tag could
+      # be repointed at other code.
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Gradle 9.7.1 runs on this JDK; the app itself still targets 17 via
+      # compileOptions and jvmTarget in app/build.gradle.kts.
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # compileSdk is 36, which the runner image does not reliably preinstall.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          # Only push builds on main write to the cache; pull requests read
+          # it. A fork PR cannot poison the cache this way.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Assemble debug
+        run: ./gradlew :app:assembleDebug
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest
+
+      # The HTML/XML reports are what makes a red run diagnosable without
+      # rerunning it locally.
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unit-test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          retention-days: 14
+          if-no-files-found: ignore

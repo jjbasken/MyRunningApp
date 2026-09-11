@@ -26,6 +26,8 @@ class PreferencesRepository @Inject constructor(
             colorRouteByPace = prefs[Keys.PACE_COLOR] ?: false,
             backgroundLocationAsked = prefs[Keys.BACKGROUND_ASKED] ?: false,
             backgroundWarningDismissed = prefs[Keys.BACKGROUND_WARNING_DISMISSED] ?: false,
+            healthSyncEnabled = prefs[Keys.HEALTH_SYNC_ENABLED] ?: false,
+            healthPermissionAsked = prefs[Keys.HEALTH_PERMISSION_ASKED] ?: false,
         )
     }
 
@@ -53,6 +55,14 @@ class PreferencesRepository @Inject constructor(
         dataStore.edit { it[Keys.BACKGROUND_WARNING_DISMISSED] = dismissed }
     }
 
+    suspend fun setHealthSyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.HEALTH_SYNC_ENABLED] = enabled }
+    }
+
+    suspend fun setHealthPermissionAsked(asked: Boolean) {
+        dataStore.edit { it[Keys.HEALTH_PERMISSION_ASKED] = asked }
+    }
+
     private object Keys {
         val COUNTDOWN_SECONDS = intPreferencesKey("countdown_seconds")
         val VOICE = booleanPreferencesKey("voice_announcements")
@@ -60,5 +70,7 @@ class PreferencesRepository @Inject constructor(
         val PACE_COLOR = booleanPreferencesKey("pace_color")
         val BACKGROUND_ASKED = booleanPreferencesKey("background_location_asked")
         val BACKGROUND_WARNING_DISMISSED = booleanPreferencesKey("background_warning_dismissed")
+        val HEALTH_SYNC_ENABLED = booleanPreferencesKey("health_sync_enabled")
+        val HEALTH_PERMISSION_ASKED = booleanPreferencesKey("health_permission_asked")
     }
 }

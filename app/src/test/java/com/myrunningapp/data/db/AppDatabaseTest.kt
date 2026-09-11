@@ -18,7 +18,9 @@ import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Sex
+import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -127,7 +129,7 @@ class AppDatabaseTest {
     @Test
     fun `active run is hidden and cannot be deleted`() = runTest {
         val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-            ProfileRepository(db.profileDao()))
+            ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
         val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
         assertTrue(db.runDao().observeAll().first().isEmpty())
         repository.deleteRun(id)
@@ -150,7 +152,7 @@ class AppDatabaseTest {
         try {
             db = open()
             val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-                ProfileRepository(db.profileDao()))
+                ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
             val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
             val snapshot = RunSnapshot.idle(ActivityType.RUN).copy(
                 state = RunSessionState.PAUSED, startedAt = Instant.EPOCH,
@@ -166,6 +168,10 @@ class AppDatabaseTest {
             assertEquals(id, recovered.id)
             assertFalse(recovered.isInProgress)
             assertTrue(recovered.wasRecovered)
+            // finishRun never ran for this row, so recovery is the only thing
+            // that can queue it; without that it would never reach Health Connect.
+            assertEquals(HealthSyncState.PENDING, recovered.healthSyncState)
+            assertEquals(1L, recovered.healthSyncVersion)
             assertEquals(100.0, recovered.distanceMeters, 0.0)
             assertEquals(30L, recovered.movingDurationSec)
             assertEquals(60L, recovered.elapsedDurationSec)
@@ -186,7 +192,7 @@ class AppDatabaseTest {
     @Test
     fun `failed checkpoint rolls back points splits and summary`() = runTest {
         val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
-            ProfileRepository(db.profileDao()))
+            ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
         val id = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
         val run = db.runDao().getById(id)!!
         val point = RunPointEntity(id = 1, runId = id, timestamp = Instant.EPOCH,
@@ -244,7 +250,7 @@ class AppDatabaseTest {
             )
             helper.close()
             db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
                 .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
             val run = db.runDao().observeAll().first().single()
             assertEquals(100.0, run.distanceMeters, 0.0)
@@ -252,6 +258,61 @@ class AppDatabaseTest {
             assertFalse(run.isInProgress)
             assertFalse(run.wasRecovered)
             assertEquals(1, db.runPointDao().countForRun(1))
+        } finally {
+            helper.close()
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun `migrating to 3 leaves existing runs unsynced and adds the deletion queue`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "migration-2-3-test.db"
+        context.deleteDatabase(name)
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(name)
+                .callback(object : SupportSQLiteOpenHelper.Callback(2) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        // The v2 schema, as checked in at app/schemas/.../2.json.
+                        val schema = JSONObject(
+                            javaClass.classLoader!!
+                                .getResourceAsStream("com.myrunningapp.data.db.AppDatabase/2.json")!!
+                                .reader().readText(),
+                        )
+                        val entities = schema.getJSONObject("database").getJSONArray("entities")
+                        for (i in 0 until entities.length()) {
+                            val entity = entities.getJSONObject(i)
+                            val table = entity.getString("tableName")
+                            db.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", table))
+                            // Indices too: Room validates them on migration, so a
+                            // table built from createSql alone fails the upgrade.
+                            val indices = entity.getJSONArray("indices")
+                            for (j in 0 until indices.length()) {
+                                db.execSQL(indices.getJSONObject(j).getString("createSql")
+                                    .replace("\${TABLE_NAME}", table))
+                            }
+                        }
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                }).build(),
+        )
+        try {
+            helper.writableDatabase.execSQL(
+                "INSERT INTO runs VALUES (1, 1000, 31000, 'RUN', 100.0, 30, 30, 482.8, 7, 70.0, 0, 0)",
+            )
+            helper.close()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+                .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
+
+            val run = db.runDao().getById(1)!!
+            assertEquals(HealthSyncState.NOT_SYNCED, run.healthSyncState)
+            assertEquals(0L, run.healthSyncVersion)
+            assertEquals(100.0, run.distanceMeters, 0.0)
+            assertTrue(db.healthSyncDao().pendingDeletions().isEmpty())
         } finally {
             helper.close()
             db.close()

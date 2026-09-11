@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Map tiles (osmdroid) and, later, tile cache on legacy devices. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -16,6 +17,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Health Connect: writing finished workouts. All optional; the feature is off by default. -->
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />
+
     <uses-feature
         android:name="android.hardware.location.gps"
         android:required="true" />
@@ -24,6 +31,7 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <application
@@ -53,6 +61,54 @@
             android:name=".data.location.LocationTrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!--
+            Health Connect links here to explain why the app wants health
+            permissions. Android 14 changed the action, so there are two
+            declarations pointing at the same screen - and they must stay
+            separate, because only the Android 14+ one may be permission-guarded.
+
+            Through Android 13 the intent comes from the Health Connect APK
+            itself, an ordinary app that does not hold
+            START_VIEW_PERMISSION_USAGE; guarding this filter with it would have
+            the platform refuse the start and the privacy-policy link would
+            silently do nothing on every device below 14.
+        -->
+        <activity-alias
+            android:name=".HealthPermissionsRationaleActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity-alias>
+
+        <!--
+            Android 14+, where the sender is the system permission controller.
+            Guarded, as the platform requires for this action.
+        -->
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- WorkManager is configured in MyRunningApp so Hilt can inject workers. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

@@ -286,6 +286,48 @@ Each milestone builds, runs, and is testable on its own.
    the live map redraws every second and the ramp needs a finished run's
    distribution to normalise against. Field-testing fixes are still to come —
    they need a real run first.
+7. **Health Connect sync** — finished runs are published to Health Connect so
+   other apps on the phone (Fitbit, Samsung Health, Strava, the phone's own
+   health dashboard) can read them; the app never reads anything back. **Off by
+   default**, and a run finished with the setting off costs nothing at all — the
+   design lives in
+   [`docs/superpowers/specs/2026-09-09-health-connect-sync-design.md`](superpowers/specs/2026-09-09-health-connect-sync-design.md).
+   *Built as an outbox, not a direct write on finish:* a `healthSyncState`
+   column on `runs` tracks what still needs writing, but deleting a run takes
+   its row with it, so there is nowhere left to remember that a delete is owed —
+   which is why deletions get their own table, `health_deletions`, populated
+   only for runs that had actually made it to Health Connect. A WorkManager
+   worker drains deletions before writes on every pass, so a delete can never
+   lose a race against a stale write for the same run. Every record is written
+   under `clientRecordId = "run-<id>"`, which is what makes the rest of the
+   engine simple: Health Connect treats a second write under the same id as an
+   update rather than a duplicate, and accepts deletes by that id, so correcting
+   a run's activity type is just "write it again," a retry after an ambiguous
+   failure cannot double a workout, and no Health Connect uid ever has to be
+   stored. A revoked permission is treated as **stop, not fail** — the drain
+   halts and nothing is marked `FAILED`, because the user may re-grant a minute
+   later and the queue should still be there when they do. The one place this
+   milestone had to think harder than "copy the numbers over" is laps: Health
+   Connect validates every record on construction and rejects one that falls
+   outside its session, so a mile split — which only knows its own moving
+   duration, not a wall-clock time — is placed by walking the run's
+   pause-separated segments and converting that moving-time offset into an
+   instant, which is also what keeps a mile that straddles a pause safely
+   inside the session instead of landing in the pause gap. The route is the one
+   conditional part of an otherwise-identical record: the same session is
+   written either way, with the GPS track attached only when the separate route
+   permission is granted, so an older Health Connect or a declined permission
+   costs the map and nothing else. Turning the toggle on backfills existing
+   history once; turning it off stops future syncing and leaves whatever was
+   already written alone. The privacy policy this milestone required is
+   published at <https://jjbasken.github.io/MyRunningApp/>
+   (source: [`docs/privacy-policy.md`](privacy-policy.md)), and the Play Console
+   paperwork for eventually shipping this is worked out ahead of time in
+   [`docs/play-health-declaration.md`](play-health-declaration.md). One toolchain
+   cost came along with the dependency: `connect-client` 1.1.0 forces
+   `compileSdk 36` and AGP 8.9.1 in every stable release back to 1.1.0-beta02, so
+   there was no way to add it without moving both — `targetSdk` stays at 35,
+   since raising it is a separate decision this milestone had no reason to make.
 
 ## Verification
 
@@ -303,3 +345,18 @@ Each milestone builds, runs, and is testable on its own.
   distance/time/pace/calories and that the detail route map matches where you went.
 - **Persistence:** force-stop the app mid-run; reopen; confirm the run either
   resumes (service alive) or the partial track was saved (service killed).
+- **Health Connect sync:** with the toggle off, confirm the app behaves exactly
+  as before. Switch it on and grant permission: existing history backfills and
+  the settings line settles on "Synced N runs." Complete a run and confirm it
+  appears in Health Connect within a minute, with distance, duration, calories,
+  laps and its route, and that a reader app (Fitbit, Samsung Health, Strava)
+  shows it too. Correct a run's activity type and confirm the Health Connect
+  entry changes in place rather than duplicating; delete a run and confirm it
+  disappears. Revoke permission and finish a run: the app must not crash or nag,
+  the settings line must read "Permission needed," and re-granting must publish
+  the queued run. Decline the permission dialog twice, then confirm "Grant
+  permission" opens Health Connect's own settings instead of doing nothing.
+  Grant the permission from inside Health Connect's settings and return within a
+  couple of seconds: the section must stop saying "Permission needed"
+  immediately, not only after several seconds. On a device with no Health
+  Connect, confirm the settings section is absent entirely.

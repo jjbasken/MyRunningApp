@@ -2,6 +2,7 @@ package com.myrunningapp.data.db
 
 import androidx.room.TypeConverter
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Sex
 import java.time.Instant
 
@@ -27,4 +28,11 @@ class Converters {
 
     @TypeConverter
     fun nameToSex(name: String?): Sex? = name?.let { Sex.valueOf(it) }
+
+    @TypeConverter
+    fun healthSyncStateToName(state: HealthSyncState?): String? = state?.name
+
+    @TypeConverter
+    fun nameToHealthSyncState(name: String?): HealthSyncState? =
+        name?.let { HealthSyncState.valueOf(it) }
 }

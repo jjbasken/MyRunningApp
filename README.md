@@ -12,14 +12,16 @@ Built as a learning project. See
 ## Stack
 
 Kotlin · Jetpack Compose · Hilt · Room · Coroutines/Flow ·
-FusedLocationProvider (GPS) · osmdroid (OpenStreetMap) · Android TextToSpeech.
-`minSdk 26`, single Gradle module.
+FusedLocationProvider (GPS) · osmdroid (OpenStreetMap) · Android TextToSpeech ·
+Health Connect (`connect-client`) · WorkManager.
+`minSdk 26`, `targetSdk 35`, single Gradle module.
 
 ## Building
 
-Requires **JDK 17** and the **Android SDK** (API 35). Open the project in a
-recent Android Studio (Ladybug or newer) and let it sync, or from the command
-line:
+Requires **JDK 17** and the **Android SDK** (`compileSdk 36`; `connect-client`
+1.1.0 requires it in every stable release, though the app still targets 35).
+Open the project in a recent Android Studio (Ladybug or newer) and let it sync,
+or from the command line:
 
 ```bash
 ./gradlew assembleDebug            # build the debug APK
@@ -61,9 +63,19 @@ be checked in seconds rather than on a run.
 5. **History & detail** — run list with week/all-time totals, a
    detail screen with the stat block and splits table, delete, and the
    MET-based calorie estimate wired in.
-6. **Polish** *(current)* — permission rationale flow with graceful degradation,
+6. **Polish** — permission rationale flow with graceful degradation,
    notification controls, GPX/JSON export, and the pace-coloured route. Fixes
    from field testing are still outstanding; they need a real run first.
+7. **Health Connect sync** *(current)* — finished runs are written to Health
+   Connect so other apps can read them, off by default and write-only: nothing
+   is ever read back. A Room outbox drives it, deletions get their own table
+   since deleting a run also deletes the row that would have remembered the
+   deletion, and every record is written under a stable `clientRecordId` so
+   edits and retries update a run in place instead of duplicating it. See
+   [`docs/design.md`](docs/design.md) for the full milestone writeup and
+   [`docs/play-health-declaration.md`](docs/play-health-declaration.md) for the
+   Play Console paperwork this milestone prepares — needed only if the app is
+   ever published to Play, not for sideloading.
 
 ## Interrupted activities and privacy
 
@@ -211,3 +223,41 @@ start because Robolectric's native libraries are unavailable on Linux ARM64.
 Separate SQLite checks validate migration schema equivalence, preservation of
 saved summaries, deletion protection and the recovery update. Run the full Room
 suite and device checklists on a supported Android development machine.
+
+## Health Connect sync (Milestone 7)
+
+Off by default, in **Profile → Health Connect**. Turning it on asks for
+permission and then backfills existing history once; turning it off stops
+future syncing and leaves whatever has already been written alone. The app
+requests only *write* access — it never reads a workout back from Health
+Connect or from any other app.
+
+- Full design: [`docs/superpowers/specs/2026-09-09-health-connect-sync-design.md`](docs/superpowers/specs/2026-09-09-health-connect-sync-design.md).
+- Play Console declaration worksheet, needed only for an eventual Play release:
+  [`docs/play-health-declaration.md`](docs/play-health-declaration.md).
+- Privacy policy (published, required by Play once the app requests Health
+  Connect permissions): <https://jjbasken.github.io/MyRunningApp/>.
+
+**Field checklist** (requires a device with Health Connect installed; not
+automatable):
+
+- With the toggle off, the app behaves exactly as before.
+- Switch the toggle on and grant permission: existing history backfills, and
+  the settings line settles on "Synced N runs."
+- Complete a run: it appears in Health Connect within a minute, with distance,
+  duration, calories, laps **and its route**, and shows up in a reader app
+  (Fitbit, Samsung Health, Strava).
+- Correct a run's activity type: the Health Connect entry changes in place —
+  one workout, not two.
+- Delete a run: it disappears from Health Connect.
+- Revoke permission in Health Connect, then finish a run: the app does not
+  crash or nag, and the settings line reads "Permission needed." Re-grant: the
+  queued run publishes.
+- Decline the permission dialog twice, then tap **Grant permission**: Health
+  Connect's own settings open, since Android stops showing the dialog after two
+  declines.
+- Grant the permission from inside Health Connect's settings and return within
+  a couple of seconds: the section stops saying "Permission needed"
+  immediately rather than only after several seconds.
+- On a device with no Health Connect installed, the settings section is absent
+  entirely.

@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.myrunningapp"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.myrunningapp"
@@ -102,6 +102,11 @@ dependencies {
 
     implementation(libs.play.services.location)
     implementation(libs.osmdroid.android)
+
+    implementation(libs.androidx.health.connect)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
