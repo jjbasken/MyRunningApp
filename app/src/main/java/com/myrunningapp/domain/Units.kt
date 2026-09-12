@@ -1,7 +1,9 @@
 package com.myrunningapp.domain
 
+import com.myrunningapp.domain.model.ActivityType
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import java.util.Locale
 
 /**
  * Unit conversions and display formatting. The app stores everything in metric
@@ -11,6 +13,7 @@ import kotlin.math.roundToLong
 object Units {
 
     const val METERS_PER_MILE = 1609.344
+    private const val SECONDS_PER_HOUR = 3600.0
     private const val KG_PER_LB = 0.45359237
     private const val CM_PER_INCH = 2.54
 
@@ -57,6 +60,21 @@ object Units {
         val seconds = total % 60
         return String.format("%d:%02d /mi", minutes, seconds)
     }
+
+    /**
+     * Pace in seconds per mile -> "14.2 mph". Blank for non-finite / zero.
+     *
+     * The app stores every activity as a pace, because that is what a run is;
+     * a ride is the same number read the other way up.
+     */
+    fun formatSpeedMph(secPerMile: Double): String {
+        if (!secPerMile.isFinite() || secPerMile <= 0.0) return "-- mph"
+        return String.format(Locale.US, "%.1f mph", SECONDS_PER_HOUR / secPerMile)
+    }
+
+    /** Whichever of [formatPace] and [formatSpeedMph] [activityType] is read in. */
+    fun formatPaceOrSpeed(secPerMile: Double, activityType: ActivityType): String =
+        if (activityType.readsAsSpeed) formatSpeedMph(secPerMile) else formatPace(secPerMile)
 
     fun paceSecPerMile(distanceMeters: Double, durationSec: Long): Double {
         val miles = metersToMiles(distanceMeters)

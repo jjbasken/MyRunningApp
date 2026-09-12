@@ -61,4 +61,13 @@ class GpxWriterTest {
         assertEquals("gpx", document.documentElement.tagName)
         assertEquals(0, document.getElementsByTagName("trkseg").length)
     }
+
+    @Test
+    fun `a ride is typed as cycling`() {
+        val ride = GpxWriter.write(
+            ExportFixtures.run.copy(activityType = ActivityType.BIKE),
+            ExportFixtures.points,
+        )
+        assertTrue(ride.contains("<type>cycling</type>"))
+    }
 }

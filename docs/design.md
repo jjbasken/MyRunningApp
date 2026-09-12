@@ -27,7 +27,7 @@ well-bounded units over cleverness.
 | Announcement content | "N miles. Time, MM minutes SS seconds. Last mile pace, M minutes S seconds." (no avg/current pace in the voice line) |
 | Auto-pause | **No** — manual pause/resume only |
 | Calorie inputs | Profile stores weight + height + age + sex |
-| Activity types | **Running + Walking** (chosen before a run; different calorie coefficients) |
+| Activity types | **Running + Walking + Cycling** (chosen before a run; different calorie coefficients, and a ride is read in mph rather than min/mile) |
 | Start flow | Split control: **Start now** / **Start in 30s** countdown (length configurable: 0/10/30s) |
 | Units | Miles / feet, fixed (matches user's usage) |
 
@@ -72,7 +72,7 @@ app/
 
 **Run** — one completed activity. Denormalized summary fields for fast list rendering.
 - `id` (autogen), `startedAt: Instant`, `endedAt: Instant`
-- `activityType: RUN | WALK`
+- `activityType: RUN | WALK | BIKE`
 - `distanceMeters: Double`, `movingDurationSec: Long`, `elapsedDurationSec: Long`
 - `avgPaceSecPerMile: Double`, `calories: Int`
 - `weightKgAtRun: Double` — **profile snapshot**, so editing the profile later does
@@ -190,6 +190,9 @@ as GPX.
 MET-based, explicitly approximate (as Endomondo/MapMyRun were):
 - Running MET derived from speed (ACSM/Léger-style running equation).
 - Walking MET from speed (ACSM walking equation).
+- Cycling MET from speed, fitted to the Compendium of Physical Activities'
+  outdoor-cycling entries — the ACSM's cycling equation wants a leg ergometer's
+  power output, which a phone does not have.
 - `calories = MET × 3.5 × weightKg / 200 × minutes`, using the **profile
   snapshot** on the run.
 - Age/height/sex refine the resting component.

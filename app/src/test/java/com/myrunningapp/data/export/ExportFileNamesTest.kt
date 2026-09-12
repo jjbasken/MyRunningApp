@@ -44,4 +44,15 @@ class ExportFileNamesTest {
         val name = ExportFileNames.forRun(ExportFixtures.run, ZoneId.of("UTC"))
         assertEquals(name, name.filter { it.isLetterOrDigit() || it == '-' || it == '.' })
     }
+
+    @Test
+    fun `a ride is named as a ride`() {
+        assertEquals(
+            "ride-2026-09-08-0030.gpx",
+            ExportFileNames.forRun(
+                ExportFixtures.run.copy(activityType = ActivityType.BIKE),
+                seattle,
+            ),
+        )
+    }
 }

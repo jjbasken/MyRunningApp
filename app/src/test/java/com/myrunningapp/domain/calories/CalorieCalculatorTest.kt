@@ -1,5 +1,6 @@
 package com.myrunningapp.domain.calories
 
+import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
@@ -94,5 +95,34 @@ class CalorieCalculatorTest {
                 ActivityType.RUN, 1000.0, 300, defaultProfile.copy(weightKg = 0.0),
             ),
         )
+    }
+
+    @Test
+    fun `a ride costs less than a run over the same distance and time`() {
+        val distance = 8000.0
+        val duration = 1800L
+        val bike = CalorieCalculator.calories(ActivityType.BIKE, distance, duration, defaultProfile)
+        val run = CalorieCalculator.calories(ActivityType.RUN, distance, duration, defaultProfile)
+        assertTrue("bike=$bike run=$run", bike < run)
+    }
+
+    @Test
+    fun `a ride costs less than a walk over the same distance`() {
+        val distance = 5000.0
+        val duration = 1200L
+        val bike = CalorieCalculator.calories(ActivityType.BIKE, distance, duration, defaultProfile)
+        val walk = CalorieCalculator.calories(ActivityType.WALK, distance, duration, defaultProfile)
+        assertTrue("bike=$bike walk=$walk", bike < walk)
+    }
+
+    @Test
+    fun `an hour at 15 mph lands near the compendium's 10 METs`() {
+        // 10 METs for a 70 kg adult is about 700 kcal in an hour. The single
+        // speed coefficient is a fit, not an identity, so allow 15%.
+        val meters = Units.milesToMeters(15.0)
+        val kcal = CalorieCalculator.calories(
+            ActivityType.BIKE, meters, 3600, defaultProfile.copy(weightKg = 70.0),
+        )
+        assertTrue("kcal=$kcal", kcal in 595..805)
     }
 }

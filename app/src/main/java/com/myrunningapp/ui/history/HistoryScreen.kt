@@ -14,9 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.DirectionsRun
-import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,7 +36,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
 import com.myrunningapp.domain.Units
-import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.ui.activity.icon
+import com.myrunningapp.ui.activity.labelRes
 import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.stats.RunTotals
 import java.time.ZoneId
@@ -163,9 +161,7 @@ private fun TotalsColumn(label: String, totals: RunTotals, modifier: Modifier = 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RunRow(run: Run, date: String, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val activityLabel = stringResource(
-        if (run.activityType == ActivityType.RUN) R.string.activity_run else R.string.activity_walk,
-    )
+    val activityLabel = stringResource(run.activityType.labelRes)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -179,11 +175,7 @@ private fun RunRow(run: Run, date: String, onClick: () -> Unit, onLongClick: () 
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = if (run.activityType == ActivityType.RUN) {
-                    Icons.AutoMirrored.Filled.DirectionsRun
-                } else {
-                    Icons.AutoMirrored.Filled.DirectionsWalk
-                },
+                imageVector = run.activityType.icon,
                 contentDescription = activityLabel,
                 modifier = Modifier.size(32.dp),
             )
@@ -199,7 +191,7 @@ private fun RunRow(run: Run, date: String, onClick: () -> Unit, onLongClick: () 
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    Units.formatPace(run.avgPaceSecPerMile) + " · " +
+                    Units.formatPaceOrSpeed(run.avgPaceSecPerMile, run.activityType) + " · " +
                         stringResource(R.string.stat_calories_value, run.calories),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

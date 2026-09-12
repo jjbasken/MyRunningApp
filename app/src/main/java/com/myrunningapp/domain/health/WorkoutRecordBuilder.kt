@@ -64,6 +64,7 @@ object WorkoutRecordBuilder {
             title = when (run.activityType) {
                 ActivityType.RUN -> "Run"
                 ActivityType.WALK -> "Walk"
+                ActivityType.BIKE -> "Ride"
             },
             segments = segments,
             laps = laps,

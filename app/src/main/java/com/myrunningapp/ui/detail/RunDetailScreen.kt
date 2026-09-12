@@ -42,6 +42,9 @@ import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.model.Split
 import com.myrunningapp.data.export.RunExporter
+import com.myrunningapp.ui.activity.averagePaceLabelRes
+import com.myrunningapp.ui.activity.labelRes
+import com.myrunningapp.ui.activity.splitPaceLabelRes
 import com.myrunningapp.ui.export.DocumentExportEffect
 import com.myrunningapp.ui.map.RouteMap
 import kotlinx.coroutines.launch
@@ -128,7 +131,7 @@ fun RunDetailScreen(onBack: () -> Unit, viewModel: RunDetailViewModel = hiltView
                         selected = run.activityType,
                         onSelect = viewModel::setActivityType,
                     )
-                    SplitsTable(state.splits)
+                    SplitsTable(state.splits, run.activityType)
                     OutlinedButton(
                         onClick = viewModel::exportRun,
                         modifier = Modifier.fillMaxWidth(),
@@ -178,8 +181,8 @@ private fun StatBlock(run: Run) {
                 Units.formatDuration(run.elapsedDurationSec),
             )
             StatRow(
-                stringResource(R.string.stat_avg_pace),
-                Units.formatPace(run.avgPaceSecPerMile),
+                stringResource(run.activityType.averagePaceLabelRes),
+                Units.formatPaceOrSpeed(run.avgPaceSecPerMile, run.activityType),
             )
             StatRow(
                 stringResource(R.string.stat_calories),
@@ -221,14 +224,7 @@ private fun ActivityTypePicker(selected: ActivityType, onSelect: (ActivityType) 
                 FilterChip(
                     selected = type == selected,
                     onClick = { onSelect(type) },
-                    label = {
-                        Text(
-                            stringResource(
-                                if (type == ActivityType.RUN) R.string.activity_run
-                                else R.string.activity_walk,
-                            ),
-                        )
-                    },
+                    label = { Text(stringResource(type.labelRes)) },
                 )
             }
         }
@@ -240,7 +236,7 @@ private fun ActivityTypePicker(selected: ActivityType, onSelect: (ActivityType) 
  * partial mile — never announced, but it is part of the run and belongs here.
  */
 @Composable
-private fun SplitsTable(splits: List<Split>) {
+private fun SplitsTable(splits: List<Split>, activityType: ActivityType) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.detail_splits), style = MaterialTheme.typography.titleMedium)
         if (splits.isEmpty()) {
@@ -253,7 +249,7 @@ private fun SplitsTable(splits: List<Split>) {
         SplitRow(
             stringResource(R.string.detail_split_mile),
             stringResource(R.string.detail_split_distance),
-            stringResource(R.string.detail_split_pace),
+            stringResource(activityType.splitPaceLabelRes),
             stringResource(R.string.detail_split_time),
             header = true,
         )
@@ -262,7 +258,7 @@ private fun SplitsTable(splits: List<Split>) {
             SplitRow(
                 split.splitNumber.toString(),
                 Units.formatMiles(split.distanceMeters),
-                Units.formatPace(split.paceSecPerMile),
+                Units.formatPaceOrSpeed(split.paceSecPerMile, activityType),
                 Units.formatDuration(split.durationSec),
             )
         }

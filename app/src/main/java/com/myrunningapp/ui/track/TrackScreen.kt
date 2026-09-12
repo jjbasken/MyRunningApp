@@ -48,6 +48,8 @@ import com.myrunningapp.R
 import com.myrunningapp.data.location.LocationTrackingService
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.ui.activity.labelRes
+import com.myrunningapp.ui.activity.trackAveragePaceLabelRes
 import com.myrunningapp.domain.model.RunSessionState
 import com.myrunningapp.domain.permission.PermissionGate
 import com.myrunningapp.domain.permission.PermissionStatus
@@ -338,8 +340,10 @@ private fun StatsBlock(snapshot: RunSnapshot) {
                 value = Units.formatDuration(snapshot.elapsedDurationSec),
             )
             Stat(
-                label = stringResource(R.string.track_avg_pace),
-                value = Units.formatPace(snapshot.avgPaceSecPerMile),
+                label = stringResource(snapshot.activityType.trackAveragePaceLabelRes),
+                value = Units.formatPaceOrSpeed(
+                    snapshot.avgPaceSecPerMile, snapshot.activityType,
+                ),
             )
             Stat(
                 label = stringResource(R.string.track_splits),
@@ -379,7 +383,7 @@ private fun IdleControls(
             FilterChip(
                 selected = type == selected,
                 onClick = { onSelect(type) },
-                label = { Text(stringResource(type.labelRes())) },
+                label = { Text(stringResource(type.labelRes)) },
             )
         }
     }
@@ -431,11 +435,6 @@ private fun PausedControls(onResume: () -> Unit, onFinish: () -> Unit) {
     OutlinedButton(onClick = onFinish, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.track_finish))
     }
-}
-
-private fun ActivityType.labelRes(): Int = when (this) {
-    ActivityType.RUN -> R.string.activity_run
-    ActivityType.WALK -> R.string.activity_walk
 }
 
 private fun Context.sendCommand(action: String) {

@@ -152,6 +152,7 @@ class HealthConnectGatewayImpl @Inject constructor(
             exerciseType = when (activityType) {
                 ActivityType.RUN -> ExerciseSessionRecord.EXERCISE_TYPE_RUNNING
                 ActivityType.WALK -> ExerciseSessionRecord.EXERCISE_TYPE_WALKING
+                ActivityType.BIKE -> ExerciseSessionRecord.EXERCISE_TYPE_BIKING
             },
             title = title,
             segments = segments.map {

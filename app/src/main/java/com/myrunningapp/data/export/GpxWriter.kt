@@ -62,6 +62,7 @@ object GpxWriter {
     private fun type(activityType: ActivityType): String = when (activityType) {
         ActivityType.RUN -> "running"
         ActivityType.WALK -> "walking"
+        ActivityType.BIKE -> "cycling"
     }
 
     /** GPX wants whole-second UTC; sub-second GPS timestamps carry no meaning here. */
