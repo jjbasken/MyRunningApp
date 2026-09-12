@@ -1,5 +1,7 @@
 package com.myrunningapp.domain.announce
 
+import com.myrunningapp.domain.model.ActivityType
+
 /**
  * Something the app wants to say out loud during a run.
  *
@@ -45,11 +47,13 @@ sealed interface Announcement {
      * @param mileNumber 1 for the first mile.
      * @param totalMovingSec moving time at the moment of the crossing.
      * @param lastMilePaceSec how long that mile took — for a full mile, its pace.
+     * @param activityType decides whether that is read out as a pace or a speed.
      */
     data class MileCompleted(
         val mileNumber: Int,
         val totalMovingSec: Long,
         val lastMilePaceSec: Double,
+        val activityType: ActivityType = ActivityType.RUN,
     ) : Announcement
 
     /** The wrap-up spoken once the run is over. */
@@ -57,5 +61,6 @@ sealed interface Announcement {
         val distanceMeters: Double,
         val movingDurationSec: Long,
         val avgPaceSecPerMile: Double,
+        val activityType: ActivityType = ActivityType.RUN,
     ) : Announcement
 }

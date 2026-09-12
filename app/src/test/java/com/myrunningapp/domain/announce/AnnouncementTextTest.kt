@@ -1,6 +1,7 @@
 package com.myrunningapp.domain.announce
 
 import com.myrunningapp.domain.Units
+import com.myrunningapp.domain.model.ActivityType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -132,5 +133,74 @@ class AnnouncementTextTest {
         assertEquals(Announcement.Priority.IMMEDIATE, Announcement.CountdownCue(3).priority)
         assertEquals(Announcement.Priority.IMMEDIATE, Announcement.Started.priority)
         assertEquals(Announcement.Priority.NORMAL, Announcement.Paused.priority)
+    }
+
+    // --- riding ---------------------------------------------------------------
+
+    @Test
+    fun `a mile on the bike is spoken as speed, not pace`() {
+        val text = AnnouncementText.of(
+            Announcement.MileCompleted(
+                mileNumber = 3,
+                totalMovingSec = 12 * 60,
+                lastMilePaceSec = 240.0,
+                activityType = ActivityType.BIKE,
+            ),
+        )
+
+        assertEquals(
+            "3 miles. Time, 12 minutes. Last mile speed, 15.0 miles per hour.",
+            text,
+        )
+    }
+
+    @Test
+    fun `the ride wrap-up says ride complete and an average speed`() {
+        val text = AnnouncementText.of(
+            Announcement.Finished(
+                distanceMeters = Units.milesToMeters(12.0),
+                movingDurationSec = 48 * 60,
+                avgPaceSecPerMile = 240.0,
+                activityType = ActivityType.BIKE,
+            ),
+        )
+
+        assertEquals(
+            "Ride complete. Total distance 12 miles, time 48 minutes, " +
+                "average speed 15.0 miles per hour.",
+            text,
+        )
+    }
+
+    @Test
+    fun `a ride that never moved says nothing about speed`() {
+        val text = AnnouncementText.of(
+            Announcement.Finished(
+                distanceMeters = 0.0,
+                movingDurationSec = 4,
+                avgPaceSecPerMile = Double.NaN,
+                activityType = ActivityType.BIKE,
+            ),
+        )
+
+        assertEquals("Ride complete. Total distance 0 miles, time 4 seconds.", text)
+    }
+
+    @Test
+    fun `a walk still wraps up as a run complete line`() {
+        val text = AnnouncementText.of(
+            Announcement.Finished(
+                distanceMeters = Units.METERS_PER_MILE,
+                movingDurationSec = 900,
+                avgPaceSecPerMile = 900.0,
+                activityType = ActivityType.WALK,
+            ),
+        )
+
+        assertEquals(
+            "Run complete. Total distance 1 mile, time 15 minutes, " +
+                "average pace 15 minutes per mile.",
+            text,
+        )
     }
 }

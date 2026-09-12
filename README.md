@@ -156,20 +156,23 @@ standard pieces:
 Each run is estimated against the **weight snapshot** taken when it started, so
 editing the profile later never rewrites past runs. Correcting a run's activity
 type on the detail screen does re-estimate it, since the same route costs
-noticeably more running than walking. Runs recorded before this milestone were
+noticeably more running than walking, and less again on a bike. Runs recorded before this milestone were
 saved with no estimate and still show 0 kcal.
 
 ## Checking history and detail (Milestone 5)
 
 - Finish an activity. It should appear at the top of **History** with its date,
-  a run or walk icon, distance, moving time, average pace, and calories.
+  a run, walk or bike icon, distance, moving time, average pace, and calories.
+  A ride shows **average speed in mph** instead — everywhere a pace would
+  otherwise appear, including the splits table and the spoken mile markers.
 - The header shows **this week** beside **all time** — distance, activity count,
   and moving time. The week starts on the day your locale says it does.
 - Tap a row to open it: route map, then distance / moving time / elapsed time /
   average pace / calories, then the splits table. The split paces should match
   what was announced out loud during the run.
 - Switch the activity type on the detail screen. The label and the calorie
-  number should both change; the same route costs less as a walk.
+  number should both change; the same route costs less as a walk, and less
+  again as a ride.
 - Delete from either screen — long-press a history row, or the button at the
   bottom of the detail screen. Both confirm first, and the route and splits go
   with the run. Deleting from the detail screen returns you to the list.

@@ -1,5 +1,6 @@
 package com.myrunningapp.domain.tracking
 
+import com.myrunningapp.domain.model.ActivityType
 import java.time.Duration
 import java.time.Instant
 
@@ -22,7 +23,7 @@ enum class FixVerdict {
     /** Its timestamp is not after the previous accepted fix, so it adds nothing. */
     OUT_OF_ORDER,
 
-    /** Reaching it from the previous fix would need a speed no runner can hold. */
+    /** Reaching it from the previous fix would need a speed the activity cannot reach. */
     IMPLAUSIBLE_SPEED,
 }
 
@@ -35,7 +36,7 @@ enum class FixVerdict {
  */
 class GpsFilter(
     private val maxAccuracyMeters: Float = 25f,
-    private val maxSpeedMetersPerSecond: Double = 13.0,
+    private val maxSpeedMetersPerSecond: Double = FOOT_MAX_SPEED_METERS_PER_SECOND,
     private val maxAge: Duration = Duration.ofSeconds(5),
 ) {
 
@@ -68,5 +69,25 @@ class GpsFilter(
             }
         }
         return FixVerdict.ACCEPTED
+    }
+
+    companion object {
+        /** 29 mph — comfortably past a sprint, so only noise trips it. */
+        const val FOOT_MAX_SPEED_METERS_PER_SECOND = 13.0
+
+        /**
+         * 67 mph. A descent at 45 mph is an ordinary afternoon on a bike and
+         * would be thrown away by the on-foot cap, silently freezing the
+         * distance total for the length of the descent.
+         */
+        const val BIKE_MAX_SPEED_METERS_PER_SECOND = 30.0
+
+        /** The filter [activityType] should be tracked with. */
+        fun forActivity(activityType: ActivityType): GpsFilter = GpsFilter(
+            maxSpeedMetersPerSecond = when (activityType) {
+                ActivityType.RUN, ActivityType.WALK -> FOOT_MAX_SPEED_METERS_PER_SECOND
+                ActivityType.BIKE -> BIKE_MAX_SPEED_METERS_PER_SECOND
+            },
+        )
     }
 }

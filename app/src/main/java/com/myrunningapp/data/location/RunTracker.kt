@@ -153,6 +153,7 @@ class RunTracker @Inject constructor(
                 distanceMeters = summary.distanceMeters,
                 movingDurationSec = summary.movingDurationSec,
                 avgPaceSecPerMile = summary.avgPaceSecPerMile,
+                activityType = summary.activityType,
             ),
         )
         clear()
@@ -174,7 +175,7 @@ class RunTracker @Inject constructor(
             }
         }
         flush(force = events.any { it is RunSessionEvent.MileCompleted })
-        announce(events)
+        announce(events, live.activityType)
         publish(live)
     }
 
@@ -185,7 +186,7 @@ class RunTracker @Inject constructor(
      * partial mile that belongs in the splits table but would be a lie out loud,
      * and the finish line covers that stretch anyway.
      */
-    private fun announce(events: List<RunSessionEvent>) {
+    private fun announce(events: List<RunSessionEvent>, activityType: ActivityType) {
         events.forEach { event ->
             when (event) {
                 is RunSessionEvent.TrackingStarted ->
@@ -199,6 +200,7 @@ class RunTracker @Inject constructor(
                         mileNumber = event.split.splitNumber,
                         totalMovingSec = event.split.cumulativeMovingSec,
                         lastMilePaceSec = event.split.paceSecPerMile,
+                        activityType = activityType,
                     ),
                 )
                 else -> Unit

@@ -29,6 +29,7 @@
     <!-- Track screen -->
     <string name="activity_run">Run</string>
     <string name="activity_walk">Walk</string>
+    <string name="activity_bike">Ride</string>
     <string name="track_start_now">Start now</string>
     <string name="track_start_in">Start in %1$d s</string>
     <string name="track_skip_countdown">Start now</string>
@@ -40,6 +41,7 @@
     <string name="track_moving_time">Moving time</string>
     <string name="track_elapsed_time">Elapsed</string>
     <string name="track_avg_pace">Average pace</string>
+    <string name="track_avg_speed">Average speed</string>
     <string name="track_splits">Miles completed</string>
     <string name="track_saved">Run saved to your history</string>
     <string name="track_countdown_hint">Getting a GPS fix — distance starts at zero</string>
@@ -72,6 +74,7 @@
     <string name="stat_moving_time">Moving time</string>
     <string name="stat_elapsed_time">Elapsed time</string>
     <string name="stat_avg_pace">Average pace</string>
+    <string name="stat_avg_speed">Average speed</string>
     <string name="stat_calories">Calories</string>
     <string name="stat_calories_value">%1$d kcal</string>
 
@@ -95,6 +98,7 @@
     <string name="detail_split_mile">Mile</string>
     <string name="detail_split_distance">Distance</string>
     <string name="detail_split_pace">Pace</string>
+    <string name="detail_split_speed">Speed</string>
     <string name="detail_split_time">Time</string>
     <string name="detail_delete">Delete this activity</string>
     <string name="detail_delete_message">This activity, its route and its splits will be removed. This cannot be undone.</string>

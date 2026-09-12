@@ -27,7 +27,7 @@ import kotlin.math.ceil
 class RunSession(
     val activityType: ActivityType,
     private val countdownSeconds: Int = 0,
-    private val filter: GpsFilter = GpsFilter(),
+    private val filter: GpsFilter = GpsFilter.forActivity(activityType),
 ) {
 
     private var state: RunSessionState = RunSessionState.IDLE

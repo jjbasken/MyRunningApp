@@ -21,11 +21,12 @@ object ExportFileNames {
     private val BACKUP_STAMP =
         DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
 
-    /** e.g. `run-2026-09-08-0730.gpx`, `walk-2026-09-08-1815.gpx` */
+    /** e.g. `run-2026-09-08-0730.gpx`, `walk-2026-09-08-1815.gpx`, `ride-…` */
     fun forRun(run: Run, zone: ZoneId): String {
         val prefix = when (run.activityType) {
             ActivityType.RUN -> "run"
             ActivityType.WALK -> "walk"
+            ActivityType.BIKE -> "ride"
         }
         return "$prefix-${RUN_STAMP.format(run.startedAt.atZone(zone))}.gpx"
     }

@@ -187,4 +187,16 @@ class WorkoutRecordBuilderTest {
 
         assertNull(WorkoutRecordBuilder.build(zeroLength, emptyList(), emptyList(), false, clientRecordVersion = 1L))
     }
+
+    @Test
+    fun `a ride carries its activity type and a ride title`() {
+        val workout = WorkoutRecordBuilder
+            .build(
+                run(activityType = ActivityType.BIKE), emptyList(), listOf(point(0)), false,
+                clientRecordVersion = 1L,
+            )!!
+
+        assertEquals(ActivityType.BIKE, workout.activityType)
+        assertEquals("Ride", workout.title)
+    }
 }

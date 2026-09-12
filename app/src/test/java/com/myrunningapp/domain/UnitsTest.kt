@@ -1,5 +1,6 @@
 package com.myrunningapp.domain
 
+import com.myrunningapp.domain.model.ActivityType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -59,5 +60,28 @@ class UnitsTest {
     @Test
     fun `paceSecPerMile is NaN for zero distance`() {
         assertEquals(true, Units.paceSecPerMile(0.0, 100).isNaN())
+    }
+
+    @Test
+    fun `formatSpeedMph turns seconds per mile into miles per hour`() {
+        // 4 minutes per mile is 15 mph.
+        assertEquals("15.0 mph", Units.formatSpeedMph(240.0))
+        // 9:05 per mile.
+        assertEquals("6.6 mph", Units.formatSpeedMph(545.0))
+    }
+
+    @Test
+    fun `formatSpeedMph has no answer for a zero or non-finite pace`() {
+        assertEquals("-- mph", Units.formatSpeedMph(0.0))
+        assertEquals("-- mph", Units.formatSpeedMph(-1.0))
+        assertEquals("-- mph", Units.formatSpeedMph(Double.NaN))
+        assertEquals("-- mph", Units.formatSpeedMph(Double.POSITIVE_INFINITY))
+    }
+
+    @Test
+    fun `formatPaceOrSpeed reads a ride as speed and everything else as pace`() {
+        assertEquals("15.0 mph", Units.formatPaceOrSpeed(240.0, ActivityType.BIKE))
+        assertEquals("4:00 /mi", Units.formatPaceOrSpeed(240.0, ActivityType.RUN))
+        assertEquals("4:00 /mi", Units.formatPaceOrSpeed(240.0, ActivityType.WALK))
     }
 }

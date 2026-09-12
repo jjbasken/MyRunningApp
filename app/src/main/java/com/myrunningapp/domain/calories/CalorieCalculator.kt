@@ -6,7 +6,7 @@ import com.myrunningapp.domain.model.Sex
 import kotlin.math.roundToInt
 
 /**
- * Estimates the energy cost of a run or walk.
+ * Estimates the energy cost of a run, walk or ride.
  *
  * Deliberately approximate — the same order of accuracy Endomondo and MapMyRun
  * offer without a heart-rate strap. Two standard pieces are stacked:
@@ -29,6 +29,20 @@ object CalorieCalculator {
     /** Oxygen cost of covering a metre, in mL/kg — the ACSM speed coefficients. */
     private const val RUNNING_VO2_PER_METER_PER_MINUTE = 0.2
     private const val WALKING_VO2_PER_METER_PER_MINUTE = 0.1
+
+    /**
+     * The same shape for cycling, which the ACSM has no outdoor equation for —
+     * its cycling formula is for a leg ergometer's known power output, and a
+     * phone knows only how far the bike went.
+     *
+     * So this is a least-squares fit of the same `coefficient × m/min + resting`
+     * form to the Compendium of Physical Activities' outdoor-cycling entries
+     * (6.8 METs at 10–12 mph rising to 12 METs at 16–19 mph), which holds to
+     * within about 10% from 10 to 18 mph — the range nearly every ride sits in.
+     * Below running and walking both, as it should be: a bike carries its rider
+     * further per millilitre of oxygen than legs do.
+     */
+    private const val CYCLING_VO2_PER_METER_PER_MINUTE = 0.075
 
     /** 1 L of oxygen releases roughly 5 kcal; `200 = 1000 mL / 5 kcal`. */
     private const val ML_OXYGEN_PER_KCAL = 200.0
@@ -81,6 +95,7 @@ object CalorieCalculator {
         val speedCoefficient = when (activityType) {
             ActivityType.RUN -> RUNNING_VO2_PER_METER_PER_MINUTE
             ActivityType.WALK -> WALKING_VO2_PER_METER_PER_MINUTE
+            ActivityType.BIKE -> CYCLING_VO2_PER_METER_PER_MINUTE
         }
         val vo2 = speedCoefficient * metersPerMinute + restingVo2(profile)
         val kcalPerMinute = vo2 * profile.weightKg / ML_OXYGEN_PER_KCAL

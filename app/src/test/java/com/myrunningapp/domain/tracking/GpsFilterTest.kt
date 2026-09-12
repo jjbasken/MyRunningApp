@@ -1,5 +1,6 @@
 package com.myrunningapp.domain.tracking
 
+import com.myrunningapp.domain.model.ActivityType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.Instant
@@ -109,4 +110,48 @@ class GpsFilterTest {
             t0, elapsedRealtimeMillis = 100_000))
     }
 
+    @Test
+    fun `a runner cannot outrun the default speed cap`() {
+        // 20 m/s is 45 mph: noise for a run, ordinary for a descent on a bike.
+        val previous = fix(0)
+        val f = fix(10, latitude = 51.5 + metersNorth(200.0))
+        assertEquals(
+            FixVerdict.IMPLAUSIBLE_SPEED,
+            GpsFilter.forActivity(ActivityType.RUN).evaluate(f, previous, now = f.timestamp),
+        )
+    }
+
+    @Test
+    fun `the same fix is ordinary cycling and is kept`() {
+        val previous = fix(0)
+        val f = fix(10, latitude = 51.5 + metersNorth(200.0))
+        assertEquals(
+            FixVerdict.ACCEPTED,
+            GpsFilter.forActivity(ActivityType.BIKE).evaluate(f, previous, now = f.timestamp),
+        )
+    }
+
+    @Test
+    fun `even a ride rejects a teleport`() {
+        val previous = fix(0)
+        // 10 km in 10 seconds: 2200 mph, which is a GPS glitch on any bike.
+        val f = fix(10, latitude = 51.5 + metersNorth(10_000.0))
+        assertEquals(
+            FixVerdict.IMPLAUSIBLE_SPEED,
+            GpsFilter.forActivity(ActivityType.BIKE).evaluate(f, previous, now = f.timestamp),
+        )
+    }
+
+    @Test
+    fun `walking gets the same cap as running`() {
+        val previous = fix(0)
+        val f = fix(10, latitude = 51.5 + metersNorth(200.0))
+        assertEquals(
+            FixVerdict.IMPLAUSIBLE_SPEED,
+            GpsFilter.forActivity(ActivityType.WALK).evaluate(f, previous, now = f.timestamp),
+        )
+    }
+
+    /** Degrees of latitude for a distance due north — one degree is ~111.32 km. */
+    private fun metersNorth(meters: Double): Double = meters / 111_320.0
 }
