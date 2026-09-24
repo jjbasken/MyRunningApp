@@ -4,6 +4,11 @@ name: Release
 # a GitHub Release. The tag must match versionName in app/build.gradle.kts
 # (tag v0.1.0 <-> versionName "0.1.0").
 #
+# The job runs against the "release" environment, which requires manual
+# approval before it starts: a tag pushed by a compromised write-capable
+# token still can't reach the signing secrets without a human clicking
+# approve first.
+#
 # Required repository secrets:
 #   RELEASE_KEYSTORE_BASE64    base64 of the .jks upload keystore
 #   RELEASE_KEYSTORE_PASSWORD
@@ -27,6 +32,7 @@ jobs:
     name: Build and publish release APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: release
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
