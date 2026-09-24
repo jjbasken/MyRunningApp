@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import java.util.Locale
 
 /** Shared map; the caller supplies recording fixes or a foreground location preview. */
 @Composable
@@ -56,6 +58,13 @@ fun RouteMap(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val uriHandler = LocalUriHandler.current
+    // Read here, in composable scope, so a Configuration change (density,
+    // locale) is picked up on the next overlay redraw below rather than
+    // frozen at whatever LocalContext.current held when the effect started.
+    val density = LocalDensity.current.density
+    val mileLabelPattern = stringResource(R.string.map_mile)
+    val currentPositionLabel = stringResource(R.string.map_current_position)
+    val finishLabel = stringResource(R.string.map_finish)
     var following by rememberSaveable { mutableStateOf(true) }
     var tileLoadFailed by remember { mutableStateOf(false) }
     val map = remember(context) {
@@ -106,10 +115,10 @@ fun RouteMap(
         if (colorByPace) PaceColors.bands(points) else emptyList()
     }
     // Timer recompositions do not rebuild route overlays or reset a panned camera.
-    LaunchedEffect(map, points, currentPosition, paceBands) {
+    LaunchedEffect(map, points, currentPosition, paceBands, density, mileLabelPattern, currentPositionLabel, finishLabel) {
         map.overlays.toList().forEach { it.onDetach(map) }
         map.overlays.clear()
-        val strokeWidth = 5 * context.resources.displayMetrics.density
+        val strokeWidth = 5 * density
         if (paceBands.isNotEmpty()) {
             paceBands.forEach { band ->
                 map.overlays.add(Polyline(map).apply {
@@ -133,7 +142,7 @@ fun RouteMap(
             mileMarkers(points).forEach { mile ->
                 map.overlays.add(Marker(map).apply {
                     position = mile.position.geoPoint()
-                    title = context.getString(R.string.map_mile, mile.number)
+                    title = String.format(Locale.getDefault(), mileLabelPattern, mile.number)
                     icon = numberedPin(map, mile.number)
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 })
@@ -143,17 +152,17 @@ fun RouteMap(
         if (position != null) {
             map.overlays.add(Marker(map).apply {
                 this.position = position.geoPoint()
-                title = context.getString(if (live) R.string.map_current_position else R.string.map_finish)
+                title = if (live) currentPositionLabel else finishLabel
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
             })
         }
         map.invalidate()
     }
-    LaunchedEffect(map, points, live) {
+    LaunchedEffect(map, points, live, density) {
         if (!live && points.isNotEmpty()) {
             map.doOnLayout {
                 map.zoomToBoundingBox(BoundingBox.fromGeoPoints(points.map { it.geoPoint() }),
-                    false, (48 * context.resources.displayMetrics.density).toInt(), 18.0, null)
+                    false, (48 * density).toInt(), 18.0, null)
             }
         }
     }
