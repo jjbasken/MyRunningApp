@@ -57,7 +57,7 @@ jobs:
           cache-read-only: true
 
       - name: Run unit tests
-        run: ./gradlew :app:testReleaseUnitTest
+        run: ./gradlew :app:testDebugUnitTest
 
       - name: Decode the keystore
         env:
