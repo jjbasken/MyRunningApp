@@ -72,10 +72,25 @@ class GpxImportException(val failure: GpxImportFailure) : Exception(failure.name
  */
 object GpxReader {
 
-    fun read(xml: String): GpxTrack = read(InputSource(StringReader(xml)))
+    fun read(xml: String): GpxTrack = read(InputSource(StringReader(xml.trimStart())))
 
     /** Reads raw file bytes, leaving the encoding to the file's XML declaration. */
-    fun read(bytes: ByteArray): GpxTrack = read(InputSource(ByteArrayInputStream(bytes)))
+    fun read(bytes: ByteArray): GpxTrack {
+        val start = leadingWhitespace(bytes)
+        return read(InputSource(ByteArrayInputStream(bytes, start, bytes.size - start)))
+    }
+
+    /**
+     * Whitespace ahead of the `<?xml` declaration is strictly invalid, and every
+     * parser refuses it, but some exporters write a blank line there anyway —
+     * not worth losing an activity over. Only single-byte whitespace is skipped,
+     * so a byte-order mark (and the encoding it announces) is left for the parser.
+     */
+    private fun leadingWhitespace(bytes: ByteArray): Int {
+        var i = 0
+        while (i < bytes.size && bytes[i].toInt().toChar() in " \t\r\n") i++
+        return i
+    }
 
     private fun read(source: InputSource): GpxTrack {
         val handler = Handler()

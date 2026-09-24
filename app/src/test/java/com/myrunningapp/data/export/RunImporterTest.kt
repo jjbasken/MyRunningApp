@@ -46,13 +46,13 @@ class RunImporterTest {
             """<trkpt lat="$lat" lon="0"><ele>10</ele><time>$time</time></trkpt>"""
         }
         val typeElement = type?.let { "<type>$it</type>" }.orEmpty()
-        return """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
-            <trk>$typeElement<trkseg>
-            $points
-            </trkseg></trk></gpx>
-        """.trimIndent().toByteArray()
+        // Concatenated, not trimIndent()ed: the unindented point lines would leave
+        // whitespace ahead of the XML declaration, which no parser accepts.
+        return (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n" +
+                "<trk>$typeElement<trkseg>\n$points\n</trkseg></trk></gpx>\n"
+            ).toByteArray()
     }
 
     @Test

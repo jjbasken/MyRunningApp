@@ -87,6 +87,16 @@ class GpxReaderTest {
     }
 
     @Test
+    fun `tolerates whitespace ahead of the XML declaration`() {
+        val xml = "\n  <?xml version=\"1.0\" encoding=\"UTF-8\"?>" + gpx(
+            """<trkpt lat="1" lon="2"><time>2026-01-01T00:00:00Z</time></trkpt>""",
+        )
+
+        assertEquals(1, GpxReader.read(xml.toByteArray()).segments.single().size)
+        assertEquals(1, GpxReader.read(xml).segments.single().size)
+    }
+
+    @Test
     fun `skips untimed and out-of-range points but keeps the rest`() {
         val track = GpxReader.read(
             gpx(
