@@ -125,6 +125,13 @@ dependencies {
     implementation(libs.androidx.hilt.work)
     ksp(libs.androidx.hilt.compiler)
 
+    // Forces a version compatible with androidx.test.ext:junit/espresso-core's
+    // transitive requirement; otherwise AGP's android.dependency.useConstraints
+    // strictly pins the androidTest classpath to whatever an older transitive
+    // dependency resolved on the main classpath.
+    implementation(libs.androidx.concurrent.futures)
+    implementation(libs.androidx.concurrent.futures.ktx)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
