@@ -10,6 +10,10 @@ on:
 
 permissions:
   contents: read
+  # gitleaks-action uses GITHUB_TOKEN to comment inline on the PR when it
+  # finds a leak; without this it silently falls back to the job
+  # summary/artifact only.
+  pull-requests: write
 
 jobs:
   gitleaks:
