@@ -48,7 +48,7 @@ internal class FakeRunDao : RunDao {
     }
 
     override suspend fun countOverlapping(startedAt: Instant, endedAt: Instant): Int =
-        rows.values.count { !it.isInProgress && it.startedAt <= endedAt && it.endedAt >= startedAt }
+        rows.values.count { !it.isInProgress && it.startedAt < endedAt && it.endedAt > startedAt }
 
     /** Route and split rows written through this DAO, as [insertImported] does. */
     val points = mutableListOf<RunPointEntity>()

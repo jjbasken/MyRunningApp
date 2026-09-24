@@ -177,7 +177,11 @@ class HealthConnectGatewayImpl @Inject constructor(
                             latitude = it.latitude,
                             longitude = it.longitude,
                             altitude = Length.meters(it.altitudeMeters),
-                            horizontalAccuracy = Length.meters(it.horizontalAccuracyMeters.toDouble()),
+                            // Zero means unknown, as on android.location.Location —
+                            // an imported GPX point has no accuracy to report.
+                            horizontalAccuracy = it.horizontalAccuracyMeters
+                                .takeIf { accuracy -> accuracy > 0f }
+                                ?.let { accuracy -> Length.meters(accuracy.toDouble()) },
                         )
                     },
                 )

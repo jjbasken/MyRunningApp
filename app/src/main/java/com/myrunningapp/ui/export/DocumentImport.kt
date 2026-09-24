@@ -10,18 +10,15 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 
 /**
- * What the system "open document" picker should offer for a GPX import.
+ * What the system "open document" picker should offer for a GPX import:
+ * everything.
  *
- * GPX has a registered type, but few providers know it: most label a `.gpx`
- * file as generic XML or as plain bytes. Listing all of them keeps the user's
- * file selectable wherever it lives; the reader rejects anything that is not GPX.
+ * GPX has a registered type, but providers label a `.gpx` file however they
+ * like — generic XML, plain bytes, plain text — and a file the picker greys out
+ * cannot be chosen at all. The reader says plainly when a file is not GPX, which
+ * beats a file the user can see but not tap.
  */
-val GPX_IMPORT_MIME_TYPES = arrayOf(
-    "application/gpx+xml",
-    "application/xml",
-    "text/xml",
-    "application/octet-stream",
-)
+val GPX_IMPORT_MIME_TYPES = arrayOf("*/*")
 
 /**
  * A long run at one fix a second is a few megabytes of GPX; this leaves room for

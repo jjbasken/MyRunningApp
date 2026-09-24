@@ -176,6 +176,7 @@ private fun Context.importFailureMessage(failure: GpxImportFailure): String = ge
         GpxImportFailure.NO_TIMESTAMPS -> R.string.import_no_timestamps
         GpxImportFailure.TOO_SHORT -> R.string.import_too_short
         GpxImportFailure.ALREADY_IMPORTED -> R.string.import_already_imported
+        GpxImportFailure.FAILED -> R.string.import_failed
     },
 )
 

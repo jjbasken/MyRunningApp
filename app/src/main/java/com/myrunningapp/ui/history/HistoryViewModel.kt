@@ -10,6 +10,7 @@ import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.stats.HistoryStats
 import com.myrunningapp.domain.stats.RunTotals
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,6 +99,10 @@ class HistoryViewModel @Inject constructor(
                 ImportEvent.Imported(importer.importGpx(readFile()))
             } catch (e: GpxImportException) {
                 ImportEvent.Failed(e.failure)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ImportEvent.Failed(GpxImportFailure.FAILED)
             } finally {
                 _importing.value = false
             }

@@ -23,8 +23,11 @@ interface RunDao {
     @Query("SELECT * FROM runs WHERE id = :runId")
     suspend fun getById(runId: Long): RunEntity?
 
-    /** How many finished runs share any stretch of time with `[startedAt, endedAt]`. */
-    @Query("SELECT COUNT(*) FROM runs WHERE isInProgress = 0 AND startedAt <= :endedAt AND endedAt >= :startedAt")
+    /**
+     * How many finished runs share any stretch of time with `(startedAt, endedAt)`.
+     * Strict at both ends, so a walk that ends the second a run begins is not a clash.
+     */
+    @Query("SELECT COUNT(*) FROM runs WHERE isInProgress = 0 AND startedAt < :endedAt AND endedAt > :startedAt")
     suspend fun countOverlapping(startedAt: Instant, endedAt: Instant): Int
 
     @Insert

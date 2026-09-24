@@ -5,7 +5,7 @@ import com.myrunningapp.domain.tracking.GpsFix
 import org.xml.sax.Attributes
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
-import org.xml.sax.helpers.DefaultHandler
+import org.xml.sax.ext.DefaultHandler2
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.StringReader
@@ -47,6 +47,9 @@ enum class GpxImportFailure {
 
     /** It covers the same time as an activity already in history — most likely imported before. */
     ALREADY_IMPORTED,
+
+    /** Anything else — a database error, say. Reported rather than crashing the app. */
+    FAILED,
 }
 
 class GpxImportException(val failure: GpxImportFailure) : Exception(failure.name)
@@ -80,6 +83,9 @@ object GpxReader {
             parserFactory().newSAXParser().xmlReader.apply {
                 contentHandler = handler
                 errorHandler = handler
+                // Stop at the DOCTYPE itself, before an internal subset can
+                // define entities, on parsers that ignore disallow-doctype-decl.
+                runCatching { setProperty("http://xml.org/sax/properties/lexical-handler", handler) }
                 // Nothing a GPX file needs lives outside it, so never go fetching.
                 setEntityResolver { _, _ -> InputSource(StringReader("")) }
             }.parse(source)
@@ -142,7 +148,7 @@ object GpxReader {
         ).forEach { (feature, value) -> runCatching { setFeature(feature, value) } }
     }
 
-    private class Handler : DefaultHandler() {
+    private class Handler : DefaultHandler2() {
         var sawGpxRoot = false
         val segments = mutableListOf<MutableList<GpsFix>>()
         var trackType: String? = null
@@ -170,6 +176,10 @@ object GpxReader {
                     time = null
                 }
             }
+        }
+
+        override fun startDTD(name: String?, publicId: String?, systemId: String?) {
+            throw SAXException("GPX has no use for a DTD")
         }
 
         override fun characters(ch: CharArray, start: Int, length: Int) {
@@ -202,7 +212,9 @@ object GpxReader {
                 latitude = lat,
                 longitude = lon,
                 altitudeMeters = elevation?.takeIf { it.isFinite() } ?: 0.0,
-                // GPX carries no accuracy radius; zero lets the filter judge on speed alone.
+                // GPX carries no accuracy radius. Zero means unknown, as it does on
+                // android.location.Location: the filter judges on speed alone, and
+                // Health Connect is not told a made-up figure.
                 accuracyMeters = 0f,
             )
         }

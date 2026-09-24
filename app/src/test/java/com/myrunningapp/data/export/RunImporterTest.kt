@@ -38,11 +38,11 @@ class RunImporterTest {
     )
 
     /** 2 km due north at 3 m/s, one fix a second, as one track segment. */
-    private fun gpx(type: String? = "walking", startHour: Int = 6): ByteArray {
+    private fun gpx(type: String? = "walking", startHour: Int = 6, startOffsetSec: Long = 0): ByteArray {
         val metersPerDegree = Math.toRadians(1.0) * 6_371_008.8
         val points = (0..667).joinToString("\n") { i ->
             val lat = String.format(java.util.Locale.US, "%.8f", i * 3.0 / metersPerDegree)
-            val time = java.time.Instant.parse("2026-09-01T%02d:00:00Z".format(startHour)).plusSeconds(i.toLong())
+            val time = java.time.Instant.parse("2026-09-01T%02d:00:00Z".format(startHour)).plusSeconds(startOffsetSec + i)
             """<trkpt lat="$lat" lon="0"><ele>10</ele><time>$time</time></trkpt>"""
         }
         val typeElement = type?.let { "<type>$it</type>" }.orEmpty()
@@ -83,6 +83,15 @@ class RunImporterTest {
         val id = importer.importGpx(gpx(type = null), fallbackType = ActivityType.BIKE)
 
         assertEquals(ActivityType.BIKE, runDao.getById(id)!!.activityType)
+    }
+
+    @Test
+    fun `an activity starting the moment another ended is not a duplicate`() = runTest {
+        // The first file runs 06:00:00 to 06:11:07; this one starts on that last second.
+        importer.importGpx(gpx())
+        importer.importGpx(gpx(startHour = 6, startOffsetSec = 667))
+
+        assertEquals(2, runDao.rows.size)
     }
 
     @Test

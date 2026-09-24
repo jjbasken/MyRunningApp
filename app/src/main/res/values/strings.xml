@@ -90,6 +90,7 @@
     <string name="import_no_track">That GPX file has no recorded track in it</string>
     <string name="import_no_timestamps">That GPX file has no times in it — it looks like a planned route, not a recorded activity</string>
     <string name="import_too_short">That track is too short to import</string>
+    <string name="import_failed">Could not import that file</string>
     <string name="import_already_imported">An activity at that time is already in your history</string>
     <string name="history_delete_title">Delete this activity?</string>
     <string name="history_delete_message">%1$s will be removed, along with its route and splits. This cannot be undone.</string>
