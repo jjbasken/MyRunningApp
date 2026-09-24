@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -54,12 +52,11 @@ android {
         }
     }
 
+    // Built-in Kotlin derives jvmTarget from targetCompatibility below when
+    // not set explicitly, so there is no separate compilerOptions block.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
     }
     buildFeatures {
         compose = true
