@@ -82,7 +82,15 @@
     <string name="history_title">History</string>
     <string name="history_this_week">This week</string>
     <string name="history_all_time">All time</string>
-    <string name="history_empty">Finished activities appear here, newest first. Long-press one to delete it.</string>
+    <string name="history_empty">Finished activities appear here, newest first. Long-press one to delete it, or import one recorded elsewhere from a GPX file.</string>
+    <string name="history_import_gpx">Import GPX</string>
+    <string name="import_not_gpx">That file is not a GPX file</string>
+    <string name="import_too_large">That file is too large to be one activity</string>
+    <string name="import_unreadable">Could not read the file</string>
+    <string name="import_no_track">That GPX file has no recorded track in it</string>
+    <string name="import_no_timestamps">That GPX file has no times in it — it looks like a planned route, not a recorded activity</string>
+    <string name="import_too_short">That track is too short to import</string>
+    <string name="import_already_imported">An activity at that time is already in your history</string>
     <string name="history_delete_title">Delete this activity?</string>
     <string name="history_delete_message">%1$s will be removed, along with its route and splits. This cannot be undone.</string>
     <string name="history_delete_confirm">Delete</string>

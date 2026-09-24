@@ -54,7 +54,7 @@ app/
     db/                      Room: entities, DAOs, AppDatabase, type converters
     location/                LocationTrackingService + GPS point pipeline
     repository/              RunRepository, ProfileRepository
-    export/                  GPX / JSON writers (Storage Access Framework)
+    export/                  GPX / JSON writers, GPX reader (Storage Access Framework)
   domain/
     model/                   Run, RunPoint, Split, Profile, ActivityType, RunSessionState
     tracking/                RunSession state machine, distance & pace math, GPS filter
@@ -177,7 +177,10 @@ numbered mile-marker pins. *Later milestone:* color the polyline by per-point pa
 
 **History list:** `LazyColumn` from a Room `Flow`, newest first. Row = date,
 activity-type icon, distance, moving time, avg pace, calories. Tap → detail.
-Long-press → delete (confirm). Header with simple totals (this week / all time:
+Long-press → delete (confirm). **Import GPX** in the header reads a track from
+another app, replays it through `RunSession` (segments become pauses) so its
+distance, moving time and splits follow the same rules as a recorded run, and
+opens the new activity. Header with simple totals (this week / all time:
 distance, run count, time).
 
 **Run detail:** route map, then stat block (distance, moving time, elapsed time,
@@ -203,8 +206,8 @@ MET-based, explicitly approximate (as Endomondo/MapMyRun were):
 - **Profile:** weight, height, age, sex.
 - **Preferences:** countdown length (0/10/30 s), voice on/off, keep-screen-on
   during run, pace-color on map.
-- **Data:** export all (JSON + GPX per run) via Storage Access Framework; import
-  is a later addition.
+- **Data:** export all (JSON + GPX per run) via Storage Access Framework;
+  restoring the JSON backup is a later addition.
 
 ## Permissions & platform
 

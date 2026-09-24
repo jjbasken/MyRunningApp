@@ -15,6 +15,7 @@ import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Profile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import java.time.Instant
 
 /**
  * In-memory DAOs shared by the tests that exercise logic sitting on top of Room.
@@ -46,10 +47,18 @@ internal class FakeRunDao : RunDao {
         if (rows[runId]?.isInProgress == false) rows.remove(runId)
     }
 
-    // Crash-recovery checkpointing isn't exercised by the tests that use this fake; these
-    // three are no-ops purely so FakeRunDao compiles as a RunDao.
-    override suspend fun insertCheckpointPoints(points: List<RunPointEntity>) = Unit
-    override suspend fun insertCheckpointSplits(splits: List<SplitEntity>) = Unit
+    override suspend fun countOverlapping(startedAt: Instant, endedAt: Instant): Int =
+        rows.values.count { !it.isInProgress && it.startedAt <= endedAt && it.endedAt >= startedAt }
+
+    /** Route and split rows written through this DAO, as [insertImported] does. */
+    val points = mutableListOf<RunPointEntity>()
+    val splits = mutableListOf<SplitEntity>()
+
+    override suspend fun insertCheckpointPoints(points: List<RunPointEntity>) { this.points += points }
+    override suspend fun insertCheckpointSplits(splits: List<SplitEntity>) { this.splits += splits }
+
+    // Crash-recovery checkpointing isn't exercised by the tests that use this fake;
+    // a no-op purely so FakeRunDao compiles as a RunDao.
     override suspend fun clearCheckpointSplits(runId: Long) = Unit
 }
 

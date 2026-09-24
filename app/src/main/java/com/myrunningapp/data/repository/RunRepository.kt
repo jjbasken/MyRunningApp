@@ -138,6 +138,60 @@ class RunRepository @Inject constructor(
         runDao.deleteById(runId)
     }
 
+    /** Whether any finished run shares time with `[startedAt, endedAt]`. */
+    suspend fun overlapsExisting(startedAt: Instant, endedAt: Instant): Boolean =
+        runDao.countOverlapping(startedAt, endedAt) > 0
+
+    /**
+     * Saves an activity recorded somewhere else, already replayed into a
+     * finished session by [com.myrunningapp.domain.tracking.TrackReplay].
+     *
+     * The weight snapshot is today's: nothing better is known about the day it
+     * was run. It is queued for Health Connect like any finished run, since it
+     * is now part of this app's history.
+     */
+    suspend fun importRun(
+        activityType: ActivityType,
+        snapshot: RunSnapshot,
+        points: List<TrackedPoint>,
+        startedAt: Instant,
+        endedAt: Instant,
+    ): Long {
+        val weightKg = profileRepository.get().weightKg
+        val runId = runDao.insertImported(
+            RunEntity(
+                startedAt = startedAt,
+                endedAt = endedAt,
+                activityType = activityType,
+                distanceMeters = snapshot.distanceMeters,
+                movingDurationSec = snapshot.movingDurationSec,
+                elapsedDurationSec = snapshot.elapsedDurationSec,
+                avgPaceSecPerMile = snapshot.avgPaceSecPerMile.takeIf { it.isFinite() } ?: 0.0,
+                calories = estimateCalories(activityType, snapshot.distanceMeters,
+                    snapshot.movingDurationSec, weightKg),
+                weightKgAtRun = weightKg,
+            ),
+            points.map { tracked ->
+                RunPointEntity(
+                    runId = 0, timestamp = tracked.fix.timestamp,
+                    latitude = tracked.fix.latitude, longitude = tracked.fix.longitude,
+                    altitudeMeters = tracked.fix.altitudeMeters,
+                    accuracyMeters = tracked.fix.accuracyMeters, segmentIndex = tracked.segmentIndex,
+                )
+            },
+            snapshot.completedSplits.map { split ->
+                SplitEntity(
+                    runId = 0, splitNumber = split.splitNumber,
+                    distanceMeters = split.distanceMeters, durationSec = split.durationSec,
+                    paceSecPerMile = split.paceSecPerMile,
+                )
+            },
+        )
+        healthSyncDao.markPending(runId)
+        healthSyncScheduler.requestSync()
+        return runId
+    }
+
     // --- RunRecorder: the tracking service's write path -----------------------
 
     /**
