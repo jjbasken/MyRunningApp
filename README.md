@@ -32,6 +32,14 @@ or from the command line:
 The Gradle wrapper (`gradlew`, `gradle/wrapper/`) is checked in, so no separate
 Gradle install is needed.
 
+Every push and pull request builds the debug APK and runs the JVM test suite in
+CI ([`.github/workflows/build.yml`](.github/workflows/build.yml)). Pushing a tag
+matching `app/build.gradle.kts`'s `versionName` (e.g. `v0.2.0`) builds a signed
+release APK and publishes it as a GitHub Release
+([`.github/workflows/release.yml`](.github/workflows/release.yml)); this needs
+the repository's release-signing secrets and is not required for sideloading a
+debug build.
+
 ## Project layout
 
 ```
@@ -225,13 +233,17 @@ rather than firing a request Android refuses without showing you anything.
   go back to normal the moment the run ends.
 
 Validation on the Linux ARM64 development host: the debug APK builds using the
-host's existing x86 resource-compiler compatibility wrapper. 191 of 198 JVM tests
-pass, including tracker checkpoint/protection and asynchronous export coverage.
-Seven Room tests (including recovery, rollback and migration coverage) cannot
-start because Robolectric's native libraries are unavailable on Linux ARM64.
-Separate SQLite checks validate migration schema equivalence, preservation of
-saved summaries, deletion protection and the recovery update. Run the full Room
-suite and device checklists on a supported Android development machine.
+host's existing x86 resource-compiler compatibility wrapper. The JVM suite has
+grown past 300 test cases (tracker checkpoint/protection, GPS replay, GPX
+import/export, calories, Health Connect and announcement coverage). Room-backed
+tests (recovery, rollback and migration coverage) cannot start on this host
+because Robolectric's native libraries are unavailable on Linux ARM64; separate
+SQLite checks validate migration schema equivalence, preservation of saved
+summaries, deletion protection and the recovery update instead. CI
+([`.github/workflows/build.yml`](.github/workflows/build.yml)) runs the full
+`testDebugUnitTest` suite on every push and pull request from an x86_64 runner,
+which is where a real pass/fail count is authoritative; run the full Room suite
+and device checklists on a supported Android development machine.
 
 ## Health Connect sync (Milestone 7)
 
