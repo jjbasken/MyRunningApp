@@ -207,7 +207,13 @@ rather than firing a request Android refuses without showing you anything.
   should show a gap rather than a straight line across it.
 - **Export everything:** **Profile → Data → Export all data**. One JSON file
   with every activity, its route and its splits — this app has no server, so the
-  export is the backup. Import is not built yet.
+  export is the backup. Restoring from it is not built yet.
+- **Import a GPX file:** **History → Import GPX**, then pick a `.gpx` exported
+  from this app, Strava, Garmin or similar. The new activity opens straight
+  away: check its type (read from the file's `<type>`, otherwise Run) and
+  correct it there if needed. Segment breaks in the file become pauses. Importing
+  the same file twice, or a planned route with no times, is refused with a
+  message saying why.
 - **Pace colours:** turn on **Profile → Preferences → Colour route by pace**,
   then open a saved run of at least a few hundred metres. The route is drawn
   green through amber to red with a legend. Colours are relative to *that run* —

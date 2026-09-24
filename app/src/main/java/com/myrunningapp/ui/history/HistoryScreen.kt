@@ -1,5 +1,8 @@
 package com.myrunningapp.ui.history
 
+import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -7,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,32 +18,43 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myrunningapp.R
+import com.myrunningapp.data.export.GpxImportFailure
 import com.myrunningapp.domain.Units
 import com.myrunningapp.ui.activity.icon
 import com.myrunningapp.ui.activity.labelRes
 import com.myrunningapp.domain.model.Run
 import com.myrunningapp.domain.stats.RunTotals
+import com.myrunningapp.ui.export.GPX_IMPORT_MIME_TYPES
+import com.myrunningapp.ui.export.readBytes
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -51,6 +66,30 @@ import java.time.format.FormatStyle
 @Composable
 fun HistoryScreen(onRunClick: (Long) -> Unit, viewModel: HistoryViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val importing by viewModel.importing.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    val openRun by rememberUpdatedState(onRunClick)
+
+    // The SAF grant covers the one file picked, so importing needs no storage permission.
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) viewModel.importGpx { appContext.readBytes(uri) }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.importEvents.collect { event ->
+            when (event) {
+                // Straight to the new activity: the type may have been guessed,
+                // and its own screen is where that gets corrected.
+                is HistoryViewModel.ImportEvent.Imported -> openRun(event.runId)
+                is HistoryViewModel.ImportEvent.Failed ->
+                    snackbarHostState.showSnackbar(context.importFailureMessage(event.failure))
+            }
+        }
+    }
 
     // Held here rather than in the ViewModel: an in-flight confirmation is about
     // this screen, and should not survive the user navigating away from it.
@@ -61,39 +100,58 @@ fun HistoryScreen(onRunClick: (Long) -> Unit, viewModel: HistoryViewModel = hilt
             .withZone(ZoneId.systemDefault())
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Text(
-                stringResource(R.string.history_title),
-                style = MaterialTheme.typography.headlineMedium,
-            )
-        }
+    // Only here to host the snackbar: MainScreen's scaffold already applied the
+    // system insets, so this one must not add them a second time.
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0),
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.history_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (importing) {
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                    } else {
+                        TextButton(onClick = { importLauncher.launch(GPX_IMPORT_MIME_TYPES) }) {
+                            Icon(Icons.Filled.FileOpen, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.history_import_gpx))
+                        }
+                    }
+                }
+            }
 
-        if (state.runs.isNotEmpty()) {
-            item { TotalsHeader(thisWeek = state.thisWeek, allTime = state.allTime) }
-        }
+            if (state.runs.isNotEmpty()) {
+                item { TotalsHeader(thisWeek = state.thisWeek, allTime = state.allTime) }
+            }
 
-        when {
-            state.loading -> item { CircularProgressIndicator() }
-            state.runs.isEmpty() -> item {
-                Text(
-                    stringResource(R.string.history_empty),
-                    style = MaterialTheme.typography.bodyMedium,
+            when {
+                state.loading -> item { CircularProgressIndicator() }
+                state.runs.isEmpty() -> item {
+                    Text(
+                        stringResource(R.string.history_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+
+            items(state.runs, key = { it.id }) { run ->
+                RunRow(
+                    run = run,
+                    date = formatter.format(run.startedAt),
+                    onClick = { onRunClick(run.id) },
+                    onLongClick = { pendingDelete = run },
                 )
             }
-        }
-
-        items(state.runs, key = { it.id }) { run ->
-            RunRow(
-                run = run,
-                date = formatter.format(run.startedAt),
-                onClick = { onRunClick(run.id) },
-                onLongClick = { pendingDelete = run },
-            )
         }
     }
 
@@ -108,6 +166,19 @@ fun HistoryScreen(onRunClick: (Long) -> Unit, viewModel: HistoryViewModel = hilt
         )
     }
 }
+
+private fun Context.importFailureMessage(failure: GpxImportFailure): String = getString(
+    when (failure) {
+        GpxImportFailure.NOT_GPX -> R.string.import_not_gpx
+        GpxImportFailure.TOO_LARGE -> R.string.import_too_large
+        GpxImportFailure.UNREADABLE -> R.string.import_unreadable
+        GpxImportFailure.NO_TRACK -> R.string.import_no_track
+        GpxImportFailure.NO_TIMESTAMPS -> R.string.import_no_timestamps
+        GpxImportFailure.TOO_SHORT -> R.string.import_too_short
+        GpxImportFailure.ALREADY_IMPORTED -> R.string.import_already_imported
+        GpxImportFailure.FAILED -> R.string.import_failed
+    },
+)
 
 /** This week beside all time — the two spans worth glancing at before a run. */
 @Composable
