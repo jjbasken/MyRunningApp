@@ -3,7 +3,6 @@ package com.myrunningapp.domain.tracking
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.Instant
@@ -34,7 +33,7 @@ class TrackReplayTest {
     @Test
     fun `one continuous segment becomes a run with its splits`() {
         // 2000 m in 667 s: one whole mile and a partial.
-        val result = assertNotNull(TrackReplay.replay(listOf(segment(0, 667)), ActivityType.RUN))!!
+        val result = TrackReplay.replay(listOf(segment(0, 667)), ActivityType.RUN)!!
 
         assertEquals(2001.0, result.snapshot.distanceMeters, 0.5)
         assertEquals(667, result.snapshot.movingDurationSec)
