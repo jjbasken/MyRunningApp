@@ -18,8 +18,9 @@ Health Connect (`connect-client`) · WorkManager.
 
 ## Building
 
-Requires **JDK 17** and the **Android SDK** (`compileSdk 36`; `connect-client`
-1.1.0 requires it in every stable release, though the app still targets 35).
+Requires **JDK 17** and the **Android SDK** (`compileSdk 37`, needed by
+Compose 1.12+; `connect-client` 1.1.0 requires at least `compileSdk 36`, and
+the app still targets 35).
 Open the project in a recent Android Studio (Ladybug or newer) and let it sync,
 or from the command line:
 
