@@ -4,6 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Robolectric's runtime jar is pinned to the one its own version and the
+      # tests' sdk need (see gradle/libs.versions.toml). Its version names are
+      # one per Android release, not an upgrade path, so a bump would swap in
+      # a different SDK's runtime and break the offline lookup.
+      - dependency-name: "org.robolectric:android-all-instrumented"
   - package-ecosystem: github-actions
     directory: /
     schedule:
