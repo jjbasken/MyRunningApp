@@ -18,6 +18,12 @@ import org.junit.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.time.LocalDate
+import com.myrunningapp.data.plan.WorkoutLog
+import com.myrunningapp.domain.Units
+import com.myrunningapp.domain.plan.PlannedWorkout
+import com.myrunningapp.domain.plan.WorkoutStatus
+import com.myrunningapp.domain.plan.WorkoutType
 
 /**
  * The tracker is the seam between the pure [com.myrunningapp.domain.tracking.RunSession]
@@ -521,5 +527,135 @@ class RunTrackerTest {
         assertEquals(RunSessionState.IDLE, tracker.snapshot.value.state)
         assertTrue(recorder.startedRuns.isEmpty())
         assertNull(recorder.finished)
+    }
+
+    // --- training-plan coaching -------------------------------------------------
+
+    private class FakeWorkoutLog : WorkoutLog {
+        val started = mutableListOf<Pair<Long, Long>>()
+        val recorded = mutableListOf<Pair<Long, Long>>()
+        val abandoned = mutableListOf<Pair<Long, Long>>()
+        override suspend fun startWorkoutRun(workoutId: Long, runId: Long) {
+            started += workoutId to runId
+        }
+        override suspend fun recordWorkoutRun(workoutId: Long, runId: Long) {
+            recorded += workoutId to runId
+        }
+        override suspend fun abandonWorkoutRun(workoutId: Long, runId: Long) {
+            abandoned += workoutId to runId
+        }
+    }
+
+    private val workoutLog = FakeWorkoutLog()
+    private val coachedTracker = RunTracker(recorder, announcer, clock, MonotonicClock { elapsedMillis }, workoutLog)
+
+    /** One mile at 8:40–9:20 a mile; the test track runs 3 m/s, an 8:56 mile. */
+    private fun oneMile(type: WorkoutType = WorkoutType.EASY) = PlannedWorkout(
+        id = 42, planId = 1, date = LocalDate.of(2026, 9, 8), type = type, title = "Easy mile",
+        description = "", distanceMeters = Units.METERS_PER_MILE, durationSec = null,
+        paceFastSecPerMile = 520.0, paceSlowSecPerMile = 560.0,
+        status = WorkoutStatus.PLANNED, completedRunId = null,
+    )
+
+    private suspend fun runCoachedFor(seconds: Int) {
+        for (i in 0..seconds) {
+            at(i.toLong())
+            coachedTracker.onLocation(fix(i.toLong(), i * 3.0))
+        }
+    }
+
+    @Test
+    fun `a coached run hears its workout, a check-in, and the target, in that order`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        assertEquals(42L, coachedTracker.activeWorkout.value?.id)
+        runCoachedFor(seconds = 620)
+
+        val coaching = announcer.spoken.filter {
+            it is Announcement.Started || it is Announcement.WorkoutIntro || it is Announcement.MileCompleted ||
+                it is Announcement.WorkoutCheckIn || it is Announcement.WorkoutTargetReached
+        }.map { it::class.simpleName }
+        assertEquals(
+            listOf("Started", "WorkoutIntro", "MileCompleted", "WorkoutCheckIn", "WorkoutTargetReached"),
+            coaching,
+        )
+        val checkIn = announcer.spoken.filterIsInstance<Announcement.WorkoutCheckIn>().single()
+        assertEquals(Announcement.PaceVerdict.ON_TARGET, checkIn.verdict)
+    }
+
+    @Test
+    fun `finishing a coached run ticks the workout off with the run`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        runCoachedFor(seconds = 200) // 600 m, past the quarter-mile floor
+        coachedTracker.finish()
+
+        assertEquals(listOf(42L to 7L), workoutLog.recorded)
+        assertTrue(workoutLog.abandoned.isEmpty())
+        assertNull(coachedTracker.activeWorkout.value)
+    }
+
+    @Test
+    fun `the workout is linked as soon as the run row exists, so a process death can credit it`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        runCoachedFor(seconds = 5)
+
+        assertEquals(listOf(42L to 7L), workoutLog.started)
+        assertTrue(workoutLog.recorded.isEmpty())
+    }
+
+    @Test
+    fun `a false start does not complete the workout`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        runCoachedFor(seconds = 30) // 90 m
+        coachedTracker.finish()
+
+        assertTrue(workoutLog.recorded.isEmpty())
+        // The link made at the start is let go, leaving the workout to do.
+        assertEquals(listOf(42L to 7L), workoutLog.abandoned)
+    }
+
+    @Test
+    fun `a run that never moved does not complete the workout`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        at(5)
+        coachedTracker.tick()
+        coachedTracker.finish()
+
+        assertTrue(workoutLog.recorded.isEmpty())
+    }
+
+    @Test
+    fun `a walk is never coached against a run`() = runTest {
+        coachedTracker.start(ActivityType.WALK, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        runCoachedFor(seconds = 30)
+        coachedTracker.finish()
+
+        assertNull(coachedTracker.activeWorkout.value)
+        assertTrue(announcer.spoken.none { it is Announcement.WorkoutIntro })
+        assertTrue(workoutLog.started.isEmpty())
+        assertTrue(workoutLog.recorded.isEmpty())
+    }
+
+    @Test
+    fun `a cancelled countdown drops the workout`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 10, weightKg = 70.0, workout = oneMile())
+        coachedTracker.cancel()
+
+        assertNull(coachedTracker.activeWorkout.value)
+        assertTrue(announcer.spoken.none { it is Announcement.WorkoutIntro })
+    }
+
+    @Test
+    fun `a run with no workout says nothing a coach would`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0)
+        runCoachedFor(seconds = 620)
+        coachedTracker.finish()
+
+        assertTrue(
+            announcer.spoken.none {
+                it is Announcement.WorkoutIntro || it is Announcement.WorkoutCheckIn ||
+                    it is Announcement.WorkoutTargetReached
+            },
+        )
+        assertTrue(workoutLog.recorded.isEmpty())
     }
 }

@@ -6,6 +6,9 @@ import com.myrunningapp.data.location.RunTracker
 import com.myrunningapp.data.location.LocationClient
 import com.myrunningapp.domain.tracking.GpsFix
 import com.myrunningapp.data.prefs.PreferencesRepository
+import com.myrunningapp.data.plan.TrainingPlanRepository
+import com.myrunningapp.domain.plan.PlanOverview
+import com.myrunningapp.domain.plan.PlannedWorkout
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.tracking.RunSnapshot
@@ -33,6 +36,10 @@ data class TrackUiState(
     /** Remembered permission-flow state; see [com.myrunningapp.domain.permission.PermissionGate]. */
     val backgroundLocationAsked: Boolean,
     val backgroundWarningDismissed: Boolean,
+    /** Today's run from the training plan, still to do; null with no plan or a rest day. */
+    val todaysWorkout: PlannedWorkout? = null,
+    /** Whether the next run is coached against [todaysWorkout]. */
+    val coachTodaysWorkout: Boolean = true,
 )
 
 /**
@@ -48,6 +55,7 @@ class TrackViewModel @Inject constructor(
     private val tracker: RunTracker,
     private val preferencesRepository: PreferencesRepository,
     private val profileRepository: ProfileRepository,
+    private val planRepository: TrainingPlanRepository,
     locationClient: LocationClient,
 ) : ViewModel() {
 
@@ -63,12 +71,23 @@ class TrackViewModel @Inject constructor(
         }
 
     private val selectedActivityType = MutableStateFlow(ActivityType.RUN)
+    private val coachTodaysWorkout = MutableStateFlow(true)
+
+    /** Follows the date too: a screen left open overnight must not coach yesterday's workout. */
+    private val todaysWorkout = combine(planRepository.activePlan, planRepository.todayFlow) { active, today ->
+        active?.let { PlanOverview.todaysRun(it.workouts, today) }
+    }
+
+    /** The workout the run in progress is being coached against. */
+    val activeWorkout: StateFlow<PlannedWorkout?> = tracker.activeWorkout
 
     val uiState: StateFlow<TrackUiState> = combine(
         tracker.snapshot,
         selectedActivityType,
         preferencesRepository.preferences,
-    ) { snapshot, activityType, preferences ->
+        todaysWorkout,
+        coachTodaysWorkout,
+    ) { snapshot, activityType, preferences, workout, coach ->
         TrackUiState(
             snapshot = snapshot,
             selectedActivityType = activityType,
@@ -76,6 +95,8 @@ class TrackViewModel @Inject constructor(
             keepScreenOn = preferences.keepScreenOnDuringRun,
             backgroundLocationAsked = preferences.backgroundLocationAsked,
             backgroundWarningDismissed = preferences.backgroundWarningDismissed,
+            todaysWorkout = workout,
+            coachTodaysWorkout = coach,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -106,6 +127,7 @@ class TrackViewModel @Inject constructor(
         val activityType: ActivityType,
         val countdownSeconds: Int,
         val weightKg: Double,
+        val workoutId: Long?,
     )
 
     fun selectActivityType(activityType: ActivityType) {
@@ -117,12 +139,25 @@ class TrackViewModel @Inject constructor(
         viewModelScope.launch {
             val preferences = preferencesRepository.preferences.first()
             val profile = profileRepository.get()
+            val activityType = selectedActivityType.value
+            val state = uiState.value
             _startRequest.value = StartRequest(
-                activityType = selectedActivityType.value,
+                activityType = activityType,
                 countdownSeconds = if (withCountdown) preferences.countdownLength.seconds else 0,
                 weightKg = profile.weightKg,
+                // The date check is a backstop for a state that has not caught up with midnight.
+                workoutId = state.todaysWorkout
+                    ?.takeIf {
+                        state.coachTodaysWorkout && activityType == ActivityType.RUN &&
+                            it.date == planRepository.today()
+                    }
+                    ?.id,
             )
         }
+    }
+
+    fun setCoachTodaysWorkout(enabled: Boolean) {
+        coachTodaysWorkout.value = enabled
     }
 
     fun onStartHandled() {

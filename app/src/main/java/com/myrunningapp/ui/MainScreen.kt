@@ -20,6 +20,7 @@ import androidx.navigation.NavType
 import com.myrunningapp.ui.detail.RunDetailScreen
 import com.myrunningapp.ui.history.HistoryScreen
 import com.myrunningapp.ui.nav.Routes
+import com.myrunningapp.ui.plan.PlanScreen
 import com.myrunningapp.ui.nav.TopLevelDestination
 import com.myrunningapp.ui.profile.ProfileScreen
 import com.myrunningapp.ui.track.TrackScreen
@@ -67,6 +68,9 @@ fun MainScreen() {
         ) {
             composable(Routes.TRACK) {
                 TrackScreen(onRunClick = { navController.navigate(Routes.runDetail(it)) })
+            }
+            composable(Routes.PLAN) {
+                PlanScreen(onRunClick = { runId -> navController.navigate(Routes.runDetail(runId)) })
             }
             composable(Routes.HISTORY) {
                 HistoryScreen(onRunClick = { runId -> navController.navigate(Routes.runDetail(runId)) })

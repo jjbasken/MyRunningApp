@@ -1,6 +1,7 @@
 package com.myrunningapp.domain.announce
 
 import com.myrunningapp.domain.model.ActivityType
+import com.myrunningapp.domain.plan.WorkoutType
 
 /**
  * Something the app wants to say out loud during a run.
@@ -62,5 +63,44 @@ sealed interface Announcement {
         val movingDurationSec: Long,
         val avgPaceSecPerMile: Double,
         val activityType: ActivityType = ActivityType.RUN,
+    ) : Announcement
+
+    // --- training-plan coaching ------------------------------------------------
+    // Spoken only when a run was started against a planned workout; see
+    // com.myrunningapp.domain.plan.WorkoutCoach for when each one is said.
+
+    /** Straight after "Go": what today's session is. */
+    data class WorkoutIntro(
+        val title: String,
+        val distanceMeters: Double?,
+        val durationSec: Long?,
+        val paceFastSecPerMile: Double?,
+        val paceSlowSecPerMile: Double?,
+    ) : Announcement
+
+    /** How the mile just finished compared with the plan's target pace. */
+    enum class PaceVerdict { ON_TARGET, TOO_FAST, TOO_SLOW }
+
+    /**
+     * Follows a mile line: a pace verdict, how much of the workout is left, or
+     * both. Either may be null, never both.
+     *
+     * @param secondsOff how far outside the target range the mile was, rounded.
+     */
+    data class WorkoutCheckIn(
+        val workoutType: WorkoutType,
+        val verdict: PaceVerdict?,
+        val secondsOff: Long,
+        val remainingMeters: Double?,
+        val remainingSec: Long?,
+    ) : Announcement
+
+    /** Halfway through a workout set by time, where there are no miles to count down. */
+    data class WorkoutHalfway(val remainingSec: Long) : Announcement
+
+    /** The planned distance or time is done; the run is still going until Finish. */
+    data class WorkoutTargetReached(
+        val distanceMeters: Double?,
+        val durationSec: Long?,
     ) : Announcement
 }

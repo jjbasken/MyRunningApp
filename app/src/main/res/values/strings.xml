@@ -155,4 +155,114 @@
         <item quantity="one">%1$d run could not be written</item>
         <item quantity="other">%1$d runs could not be written</item>
     </plurals>
+
+    <!-- Training plan -->
+    <string name="nav_plan">Plan</string>
+    <string name="action_close">Close</string>
+    <string name="plan_title">Training plan</string>
+    <string name="plan_empty_intro">Import a training plan written by an AI assistant, and the app will coach you through it: today\'s workout on the Track screen, spoken pace and distance cues while you run, and each run ticked off the plan when you finish.</string>
+    <string name="plan_step_label">Step %1$d</string>
+    <string name="plan_step_prompt">Tell the app about your race and your running now. It writes a prompt for you to give to an AI assistant such as Claude.</string>
+    <string name="plan_step_ask">Paste the prompt into the assistant. When it replies with the plan, copy the whole reply.</string>
+    <string name="plan_step_import">Come back here and paste it in, or open it if you saved it as a file.</string>
+    <string name="plan_privacy_note">The app never contacts an AI service itself: you choose what to share in the chat, and your runs stay on this phone.</string>
+    <string name="plan_get_prompt">Write AI prompt</string>
+    <string name="plan_paste">Paste plan</string>
+    <string name="plan_open_file">Open file</string>
+    <string name="plan_menu">Plan options</string>
+    <string name="plan_clipboard_empty">Nothing to paste. Copy the assistant\'s reply first.</string>
+    <string name="plan_import_unreadable">That file could not be read.</string>
+    <string name="plan_import_too_large">That file is too big to be a plan. To restore the plan from a full backup, copy its \"plan\" section into a file of its own and open that.</string>
+    <string name="plan_import_not_json">That doesn\'t look like a plan. Copy the assistant\'s whole reply, including the JSON.</string>
+    <string name="plan_import_no_workouts">The plan has no workouts in it.</string>
+    <string name="plan_import_bad_date">A workout is missing its date, or its week and day.</string>
+    <string name="plan_import_bad_workout">A workout has a distance, time or pace that can\'t be right.</string>
+    <string name="plan_import_too_many">That is far more workouts than a plan would have.</string>
+    <plurals name="plan_imported">
+        <item quantity="one">Imported %1$d workout</item>
+        <item quantity="other">Imported %1$d workouts</item>
+    </plurals>
+    <plurals name="plan_imported_merged">
+        <item quantity="one">Added %1$d workout to your plan</item>
+        <item quantity="other">Added %1$d workouts to your plan</item>
+    </plurals>
+    <string name="plan_import_choice_title">You already have a plan</string>
+    <plurals name="plan_import_summary">
+        <item quantity="one">%1$s: %2$d workout, %3$s to %4$s.</item>
+        <item quantity="other">%1$s: %2$d workouts, %3$s to %4$s.</item>
+    </plurals>
+    <string name="plan_import_choice_body">Replace your current plan with this one, or add these weeks to it? Adding keeps everything you have done already.</string>
+    <string name="plan_import_replace">Replace</string>
+    <string name="plan_import_merge">Add to current plan</string>
+    <string name="plan_delete_title">Delete plan</string>
+    <string name="plan_delete_body">Your recorded runs stay in History. Only the plan is removed.</string>
+    <string name="plan_delete_confirm">Delete</string>
+    <string name="plan_today">Today\'s workout</string>
+    <string name="plan_today_hint">Start a run from the Track screen and it will be coached against this workout.</string>
+    <string name="plan_next">Next workout</string>
+    <string name="plan_race_today">Race day is today. Good luck!</string>
+    <plurals name="plan_race_in_days">
+        <item quantity="one">Race day tomorrow, %2$s</item>
+        <item quantity="other">Race day in %1$d days, %2$s</item>
+    </plurals>
+    <string name="plan_progress">%1$d of %2$d runs done</string>
+    <string name="plan_this_week">This week: %1$s of %2$s</string>
+    <string name="plan_week">Week %1$d · %2$s</string>
+    <string name="plan_week_miles">%1$s / %2$s</string>
+    <string name="plan_coach">Coach</string>
+    <string name="plan_coach_this_run">Coach this run</string>
+    <string name="plan_coach_runs_only">Coaching is for runs only</string>
+    <string name="plan_coaching">Coaching: %1$s</string>
+    <string name="plan_workout_ran">You ran %1$s at %2$s</string>
+    <string name="plan_view_run">View run</string>
+    <string name="plan_skip">Skip</string>
+    <string name="plan_mark_done">Mark done</string>
+    <string name="plan_mark_not_done">Mark not done</string>
+    <string name="workout_status_planned">Planned</string>
+    <string name="workout_status_completed">Done</string>
+    <string name="workout_status_skipped">Skipped</string>
+    <string name="workout_type_easy">Easy run</string>
+    <string name="workout_type_long">Long run</string>
+    <string name="workout_type_tempo">Tempo run</string>
+    <string name="workout_type_intervals">Intervals</string>
+    <string name="workout_type_recovery">Recovery run</string>
+    <string name="workout_type_race">Race</string>
+    <string name="workout_type_cross_train">Cross-training</string>
+    <string name="workout_type_rest">Rest</string>
+    <string name="workout_type_other">Run</string>
+    <string name="plan_prompt_title">AI plan prompt</string>
+    <string name="plan_prompt_body">The more the assistant knows, the better the plan fits you.</string>
+    <string name="plan_prompt_race_date">Race date</string>
+    <string name="plan_prompt_race_date_hint">YYYY-MM-DD</string>
+    <string name="plan_prompt_race_distance">Race distance (mi)</string>
+    <string name="race_5k">5K</string>
+    <string name="race_10k">10K</string>
+    <string name="race_half_marathon">Half</string>
+    <string name="race_marathon">Marathon</string>
+    <string name="plan_prompt_runs_per_week">Runs per week (2–7)</string>
+    <string name="plan_prompt_weekly_miles">Miles per week now</string>
+    <string name="plan_prompt_longest_run">Longest recent run (mi)</string>
+    <string name="plan_prompt_notes">Anything else (optional)</string>
+    <string name="plan_prompt_notes_hint">A goal time, an old injury, your preferred long-run day</string>
+    <string name="plan_prompt_copy">Copy prompt</string>
+    <string name="plan_prompt_share">Share to an app</string>
+    <string name="plan_prompt_copied">Prompt copied. Paste it into your AI assistant.</string>
+
+    <!-- Coach tips on the plan screen -->
+    <plurals name="coach_not_started">
+        <item quantity="one">Your plan starts tomorrow. Get some sleep and lay out your shoes.</item>
+        <item quantity="other">Your plan starts in %1$d days. Easy runs until then are fine, but nothing hard.</item>
+    </plurals>
+    <string name="coach_race_week">Race week. Keep runs short and easy, sleep well, and don\'t try anything new on race day.</string>
+    <string name="coach_taper">You\'re tapering. Running less now is how your legs get fresh for race day, so resist adding miles.</string>
+    <plurals name="coach_missed">
+        <item quantity="one">You missed a run in the past week. Don\'t double up to catch up. Just pick the plan up where it is.</item>
+        <item quantity="other">You missed %1$d runs in the past week. Don\'t try to make them up. Pick the plan up where it is, and if this keeps happening, ask your assistant for a plan with fewer days.</item>
+    </plurals>
+    <string name="coach_easy_too_fast">Your easy runs have been well ahead of their target pace. Slowing down builds endurance with less risk of injury, and keeps your legs fresh for the hard days.</string>
+    <string name="coach_long_run_today">Long run today. Start slower than feels natural, and bring water if you\'ll be out over an hour.</string>
+    <string name="coach_rest_day">Rest day. Recovery is when your body adapts to the training.</string>
+    <string name="coach_behind">%1$d of %2$d runs done so far. Don\'t try to make up the old ones: follow the plan from this week, and if it keeps slipping, ask your assistant to rebuild it from where you are now.</string>
+    <string name="coach_on_track">On track: %1$d of %2$d runs done so far. Keep it up.</string>
+    <string name="coach_finished">Race day has passed. Congratulations! Import a new plan when you\'re ready for the next one.</string>
 </resources>
