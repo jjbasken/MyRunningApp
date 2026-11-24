@@ -19,9 +19,9 @@ androidxJunit = "1.3.0"
 androidxTestCore = "1.7.0"
 espresso = "3.7.0"
 turbine = "1.2.1"
-mockk = "1.13.13"
+mockk = "1.14.12"
 robolectric = "4.18.1"
-# The Android runtime Robolectric 4.17 runs tests on, for sdk=34 in
+# The Android runtime Robolectric 4.18.1 runs tests on, for sdk=34 in
 # app/src/test/resources/robolectric.properties. Resolved by Gradle so CI caches
 # it; see robolectricRuntime in app/build.gradle.kts. Bumping robolectric (or
 # its sdk) means changing this too: the tests then fail naming the jar to use.
