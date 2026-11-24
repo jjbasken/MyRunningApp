@@ -237,6 +237,10 @@ object PlanParser {
         return when {
             t.isEmpty() -> WorkoutType.EASY
             "REST" in t || t == "OFF" || "DAYOFF" in t -> WorkoutType.REST
+            // Checked before RACE: "pre-race shakeout" and "goal race pace" are not the race,
+            // and coaching them as one would urge the runner on the day before it.
+            "SHAKEOUT" in t || "PRERACE" in t -> WorkoutType.RECOVERY
+            "RACEPACE" in t || "GOALPACE" in t -> WorkoutType.TEMPO
             "RACE" in t -> WorkoutType.RACE
             "CROSS" in t || "STRENGTH" in t || "YOGA" in t || "BIKE" in t ||
                 "CYCL" in t || "SWIM" in t || t == "XT" -> WorkoutType.CROSS_TRAIN

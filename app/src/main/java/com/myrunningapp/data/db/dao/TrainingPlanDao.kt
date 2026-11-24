@@ -56,6 +56,10 @@ interface TrainingPlanDao {
     @Query("DELETE FROM plan_workouts WHERE planId = :planId AND status = 'PLANNED' AND date IN (:epochDays)")
     suspend fun deletePlannedOn(planId: Long, epochDays: List<Long>)
 
+    /** Workouts on [epochDays] that are done or skipped, which a merged-in chunk must not duplicate. */
+    @Query("SELECT * FROM plan_workouts WHERE planId = :planId AND status != 'PLANNED' AND date IN (:epochDays)")
+    suspend fun getSettledOn(planId: Long, epochDays: List<Long>): List<PlanWorkoutEntity>
+
     /** Swaps the whole plan out in one go, so a failed import never leaves half of one. */
     @Transaction
     suspend fun replacePlan(plan: TrainingPlanEntity, workouts: List<PlanWorkoutEntity>): Long {
@@ -66,13 +70,37 @@ interface TrainingPlanDao {
     }
 
     /**
-     * Adds a later chunk of the same plan. Workouts already done on a date are kept;
-     * planned ones on a date the chunk covers give way to the chunk's version.
+     * Adds a later chunk of the same plan, returning how many workouts it added.
+     *
+     * Planned workouts on a date the chunk covers give way to the chunk's version.
+     * Workouts already done or skipped are kept, and each one stands in for one of
+     * the chunk's workouts on its date — the same type first, else any — so
+     * re-importing weeks already under way does not put a fresh copy of a finished
+     * run back on the calendar, to be nagged about as missed and coached again.
+     * A chunk with more workouts on a day than were settled (a double) keeps the rest.
      */
     @Transaction
-    suspend fun mergeIntoPlan(planId: Long, workouts: List<PlanWorkoutEntity>) {
-        workouts.map { it.date.toEpochDay() }.distinct().chunked(SQLITE_MAX_ARGS).forEach { deletePlannedOn(planId, it) }
-        insertWorkouts(workouts.map { it.copy(planId = planId) })
+    suspend fun mergeIntoPlan(planId: Long, workouts: List<PlanWorkoutEntity>): Int {
+        val days = workouts.map { it.date.toEpochDay() }.distinct()
+        val settled = days.chunked(SQLITE_MAX_ARGS).flatMap { getSettledOn(planId, it) }.groupBy { it.date }
+        days.chunked(SQLITE_MAX_ARGS).forEach { deletePlannedOn(planId, it) }
+
+        val toInsert = workouts.groupBy { it.date }.flatMap { (date, chunkDay) ->
+            val unmatched = chunkDay.toMutableList()
+            var settledWithoutMatch = 0
+            for (done in settled[date].orEmpty()) {
+                val sameType = unmatched.indexOfFirst { it.type == done.type }
+                if (sameType >= 0) {
+                    unmatched.removeAt(sameType)
+                } else {
+                    settledWithoutMatch++
+                }
+            }
+            // Settled workouts whose type the chunk changed still take a slot each.
+            unmatched.drop(settledWithoutMatch)
+        }
+        insertWorkouts(toInsert.map { it.copy(planId = planId) })
+        return toInsert.size
     }
 }
 

@@ -10,12 +10,16 @@ import com.myrunningapp.domain.plan.TrainingPlan
 import com.myrunningapp.domain.plan.WorkoutStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.Clock
+import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
@@ -56,6 +60,21 @@ class TrainingPlanRepository @Inject constructor(
      */
     fun today(): LocalDate = clock.instant().atZone(ZoneId.systemDefault()).toLocalDate()
 
+    /**
+     * [today], again just after each local midnight, so a screen left open
+     * overnight moves on to the new day's workout instead of coaching
+     * yesterday's. Rechecked at least every [DATE_RECHECK_MILLIS], which also
+     * covers the phone's clock or time zone changing.
+     */
+    val todayFlow: Flow<LocalDate> = flow {
+        while (true) {
+            val now = clock.instant().atZone(ZoneId.systemDefault())
+            emit(now.toLocalDate())
+            val untilMidnight = Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay(now.zone))
+            delay(untilMidnight.toMillis().coerceIn(1_000L, DATE_RECHECK_MILLIS) + 1_000L)
+        }
+    }.distinctUntilChanged()
+
     /** @throws com.myrunningapp.domain.plan.PlanImportException */
     suspend fun parse(text: String): ParsedPlan = withContext(Dispatchers.Default) {
         PlanParser.parse(text, today())
@@ -75,13 +94,14 @@ class TrainingPlanRepository @Inject constructor(
     )
 
     /**
-     * Adds more weeks to the current plan, keeping its name and race date.
-     * Falls back to [replaceWith] when there is no plan to add to.
+     * Adds more weeks to the current plan, keeping its name and race date, and
+     * returns how many workouts were added: fewer than [parsed] holds when some of
+     * its days are already done. Falls back to [replaceWith] when there is no plan
+     * to add to.
      */
-    suspend fun mergeIntoCurrent(parsed: ParsedPlan): Long {
-        val current = dao.getActivePlan() ?: return replaceWith(parsed)
-        dao.mergeIntoPlan(current.id, parsed.workouts.map { it.toEntity() })
-        return current.id
+    suspend fun mergeIntoCurrent(parsed: ParsedPlan): Int {
+        val current = dao.getActivePlan() ?: return parsed.workouts.size.also { replaceWith(parsed) }
+        return dao.mergeIntoPlan(current.id, parsed.workouts.map { it.toEntity() })
     }
 
     suspend fun deletePlan() = dao.deleteAllPlans()
@@ -113,4 +133,8 @@ class TrainingPlanRepository @Inject constructor(
         status = WorkoutStatus.PLANNED,
         completedRunId = null,
     )
+
+    private companion object {
+        const val DATE_RECHECK_MILLIS = 15 * 60 * 1000L
+    }
 }

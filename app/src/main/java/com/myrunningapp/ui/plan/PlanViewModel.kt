@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -62,27 +62,20 @@ class PlanViewModel @Inject constructor(
         data object Unreadable : ImportEvent
     }
 
-    /**
-     * Today is read on every emission, so a plan screen opened on a new day shows
-     * the new day. Like history's totals it can go stale across midnight while
-     * left open; any change to the plan refreshes it.
-     */
-    val uiState: StateFlow<PlanUiState> = repository.activePlan
-        .map { active ->
-            val today = repository.today()
-            if (active == null) {
-                PlanUiState(loading = false, today = today)
-            } else {
-                PlanUiState(
-                    loading = false,
-                    plan = active.plan,
-                    overview = PlanOverview.of(active.plan, active.workouts, today),
-                    weeks = weeks(active.workouts, today),
-                    today = today,
-                )
-            }
+    /** Follows the date too, so a screen left open overnight moves on to the new day. */
+    val uiState: StateFlow<PlanUiState> = combine(repository.activePlan, repository.todayFlow) { active, today ->
+        if (active == null) {
+            PlanUiState(loading = false, today = today)
+        } else {
+            PlanUiState(
+                loading = false,
+                plan = active.plan,
+                overview = PlanOverview.of(active.plan, active.workouts, today),
+                weeks = weeks(active.workouts, today),
+                today = today,
+            )
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanUiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanUiState())
 
     private val _importing = MutableStateFlow(false)
     val importing: StateFlow<Boolean> = _importing.asStateFlow()
@@ -135,8 +128,13 @@ class PlanViewModel @Inject constructor(
         val parsed = _pendingImport.value ?: return
         _pendingImport.value = null
         viewModelScope.launch {
-            if (merge) repository.mergeIntoCurrent(parsed) else repository.replaceWith(parsed)
-            _importEvents.emit(ImportEvent.Imported(parsed.workouts.size, merged = merge))
+            val added = if (merge) {
+                repository.mergeIntoCurrent(parsed)
+            } else {
+                repository.replaceWith(parsed)
+                parsed.workouts.size
+            }
+            _importEvents.emit(ImportEvent.Imported(added, merged = merge))
         }
     }
 

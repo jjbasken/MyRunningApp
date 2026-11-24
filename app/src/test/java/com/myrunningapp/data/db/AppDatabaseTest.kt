@@ -417,7 +417,7 @@ class AppDatabaseTest {
                 workout(LocalDate.of(2026, 12, 3), "Old version"),
             ),
         )
-        dao.mergeIntoPlan(
+        val added = dao.mergeIntoPlan(
             planId,
             listOf(
                 workout(LocalDate.of(2026, 12, 1), "Chunk day one"),
@@ -426,8 +426,64 @@ class AppDatabaseTest {
             ),
         )
 
+        // The finished day keeps its one workout; the chunk's copy of it is not added.
         val titles = dao.observeWorkouts(planId).first().map { it.workout.title }
-        assertEquals(listOf("Done", "Chunk day one", "New version", "Week two"), titles)
+        assertEquals(listOf("Done", "New version", "Week two"), titles)
+        assertEquals(2, added)
+    }
+
+    @Test
+    fun `re-importing the same weeks leaves finished and skipped days with one workout each`() = runTest {
+        val dao = db.trainingPlanDao()
+        val days = (1..4).map { LocalDate.of(2026, 12, it) }
+        val planId = dao.replacePlan(plan(), days.map { workout(it) })
+        val ids = dao.observeWorkouts(planId).first().map { it.workout.id }
+        dao.setStatus(ids[0], WorkoutStatus.COMPLETED, null)
+        dao.setStatus(ids[1], WorkoutStatus.SKIPPED, null)
+
+        dao.mergeIntoPlan(planId, days.map { workout(it, "Again") })
+
+        val workouts = dao.observeWorkouts(planId).first().map { it.workout }
+        assertEquals(days, workouts.map { it.date })
+        assertEquals(
+            listOf(WorkoutStatus.COMPLETED, WorkoutStatus.SKIPPED, WorkoutStatus.PLANNED, WorkoutStatus.PLANNED),
+            workouts.map { it.status },
+        )
+        assertEquals(listOf("Easy run", "Easy run", "Again", "Again"), workouts.map { it.title })
+    }
+
+    @Test
+    fun `a merged double day keeps the finished run and adds only the other session`() = runTest {
+        val dao = db.trainingPlanDao()
+        val day = LocalDate.of(2026, 12, 1)
+        val planId = dao.replacePlan(plan(), listOf(workout(day, "Morning easy", WorkoutStatus.COMPLETED)))
+
+        val added = dao.mergeIntoPlan(
+            planId,
+            listOf(
+                workout(day, "Strength").copy(type = WorkoutType.CROSS_TRAIN),
+                workout(day, "Morning easy again"),
+            ),
+        )
+
+        // The chunk's easy run matches the finished one by type; the strength session is new.
+        assertEquals(1, added)
+        assertEquals(
+            listOf("Morning easy", "Strength"),
+            dao.observeWorkouts(planId).first().map { it.workout.title },
+        )
+    }
+
+    @Test
+    fun `a finished day whose type the chunk changed still is not doubled`() = runTest {
+        val dao = db.trainingPlanDao()
+        val day = LocalDate.of(2026, 12, 1)
+        val planId = dao.replacePlan(plan(), listOf(workout(day, "Easy", WorkoutStatus.COMPLETED)))
+
+        val added = dao.mergeIntoPlan(planId, listOf(workout(day, "Now a tempo").copy(type = WorkoutType.TEMPO)))
+
+        assertEquals(0, added)
+        assertEquals(listOf("Easy"), dao.observeWorkouts(planId).first().map { it.workout.title })
     }
 
     @Test

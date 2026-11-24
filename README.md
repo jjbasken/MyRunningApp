@@ -303,7 +303,9 @@ the phone, and the plan is plain JSON you can read and edit.
    (the prompt asks it to stop at the end of a week), ask for the rest.
 3. Copy the reply and tap **Paste plan**, or save it as a `.json` file and use
    **Open file**. A second chunk of the same plan asks **Replace** or **Add to
-   current plan**. Adding keeps every workout already done.
+   current plan**. Adding keeps every workout already done or skipped, and
+   the new chunk's copy of those days is not added again, so re-importing
+   weeks already under way is safe.
 
 ### The format
 
@@ -346,7 +348,8 @@ the phone, and the plan is plain JSON you can read and edit.
   sessions get no pace verdict, because their mile averages mix fast reps with
   recoveries. Easy and recovery runs are never told off for being slow.
 - **After the run:** the workout is marked done and linked to the run, so its
-  detail shows what you actually ran. Workouts can also be marked done or
+  detail shows what you actually ran. A run under a quarter mile (a false
+  start) leaves it to do. Workouts can also be marked done or
   skipped by hand. Deleting a run keeps the workout done.
 - **Between runs:** the Plan tab's coach card covers race week, the taper,
   missed runs ("don't double up"), easy runs drifting too fast, long-run days,

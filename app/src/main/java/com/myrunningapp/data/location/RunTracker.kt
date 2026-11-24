@@ -167,9 +167,11 @@ class RunTracker @Inject constructor(
         val id = runId
         if (id != null) {
             recorder.finishRun(id, summary, endedAt)
-            // A run that never left the start line has not done the workout.
+            // A false start or GPS drift has not done the workout. Ticking it off
+            // would also drop it from the Track screen, so the real run that
+            // follows would go uncoached; the runner can still mark it done by hand.
             val workoutId = coach?.workout?.id
-            if (workoutId != null && summary.distanceMeters > 0.0) {
+            if (workoutId != null && summary.distanceMeters >= MIN_WORKOUT_METERS) {
                 workoutLog.recordWorkoutRun(workoutId, id)
             }
             _lastFinishedRunId.value = id
@@ -282,5 +284,8 @@ class RunTracker @Inject constructor(
         const val MAX_BUFFERED_POINTS = 20
         /** The design's "3, 2, 1, go" — earlier seconds would just be nagging. */
         const val COUNTDOWN_CUE_FROM = 3
+
+        /** A quarter mile: the least a run must cover to count as doing its workout. */
+        const val MIN_WORKOUT_METERS = 400.0
     }
 }

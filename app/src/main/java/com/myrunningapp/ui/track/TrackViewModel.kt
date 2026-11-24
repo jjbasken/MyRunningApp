@@ -73,8 +73,9 @@ class TrackViewModel @Inject constructor(
     private val selectedActivityType = MutableStateFlow(ActivityType.RUN)
     private val coachTodaysWorkout = MutableStateFlow(true)
 
-    private val todaysWorkout = planRepository.activePlan.map { active ->
-        active?.let { PlanOverview.todaysRun(it.workouts, planRepository.today()) }
+    /** Follows the date too: a screen left open overnight must not coach yesterday's workout. */
+    private val todaysWorkout = combine(planRepository.activePlan, planRepository.todayFlow) { active, today ->
+        active?.let { PlanOverview.todaysRun(it.workouts, today) }
     }
 
     /** The workout the run in progress is being coached against. */
@@ -144,8 +145,13 @@ class TrackViewModel @Inject constructor(
                 activityType = activityType,
                 countdownSeconds = if (withCountdown) preferences.countdownLength.seconds else 0,
                 weightKg = profile.weightKg,
-                workoutId = state.todaysWorkout?.id
-                    ?.takeIf { state.coachTodaysWorkout && activityType == ActivityType.RUN },
+                // The date check is a backstop for a state that has not caught up with midnight.
+                workoutId = state.todaysWorkout
+                    ?.takeIf {
+                        state.coachTodaysWorkout && activityType == ActivityType.RUN &&
+                            it.date == planRepository.today()
+                    }
+                    ?.id,
             )
         }
     }

@@ -577,11 +577,20 @@ class RunTrackerTest {
     @Test
     fun `finishing a coached run ticks the workout off with the run`() = runTest {
         coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
-        runCoachedFor(seconds = 30)
+        runCoachedFor(seconds = 200) // 600 m, past the quarter-mile floor
         coachedTracker.finish()
 
         assertEquals(listOf(42L to 7L), workoutLog.recorded)
         assertNull(coachedTracker.activeWorkout.value)
+    }
+
+    @Test
+    fun `a false start does not complete the workout`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        runCoachedFor(seconds = 30) // 90 m
+        coachedTracker.finish()
+
+        assertTrue(workoutLog.recorded.isEmpty())
     }
 
     @Test
