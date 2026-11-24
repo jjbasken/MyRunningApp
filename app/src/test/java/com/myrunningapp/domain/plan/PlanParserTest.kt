@@ -183,6 +183,19 @@ class PlanParserTest {
     }
 
     @Test
+    fun `a pace given in both units is read in the first one`() {
+        assertEquals(570.0 to 600.0, pace("9:30-10:00 /mi (5:54-6:13 /km)"))
+        assertEquals(570.0 to 570.0, pace("9:30/mi, about 5:54/km"))
+    }
+
+    @Test
+    fun `a per-kilometre range followed by its mile equivalent stays per kilometre`() {
+        val (fast, slow) = pace("5:30 to 6:00 per km (8:51-9:39 /mi)")
+        assertEquals(330.0 / (1000.0 / Units.METERS_PER_MILE), fast!!, 0.5)
+        assertEquals(360.0 / (1000.0 / Units.METERS_PER_MILE), slow!!, 0.5)
+    }
+
+    @Test
     fun `a pace by feel has no numbers to coach to`() {
         assertEquals(null to null, pace("conversational"))
     }
@@ -263,6 +276,47 @@ class PlanParserTest {
         )
     }
 
+    // --- distances written the way assistants write them ---------------------------------
+
+    private fun distance(json: String): Double? =
+        parse("""{"workouts": [{"date": "2026-12-01", $json}]}""").workouts.single().distanceMeters
+
+    @Test
+    fun `a distance with its unit spelled out in the value is read`() {
+        assertEquals(Units.milesToMeters(3.0), distance("\"distanceMiles\": \"3 miles\"")!!, 0.01)
+        assertEquals(Units.milesToMeters(5.0), distance("\"distance\": 5")!!, 0.01)
+        assertEquals(Units.milesToMeters(3.1), distance("\"distance\": \"3.1 mi\"")!!, 0.01)
+        assertEquals(5000.0, distance("\"distance\": \"5 km\"")!!, 0.01)
+        assertEquals(5000.0, distance("\"distance\": \"5K\"")!!, 0.01)
+        assertEquals(800.0, distance("\"distance\": \"800m\"")!!, 0.01)
+    }
+
+    @Test
+    fun `a session description in the distance field is not taken for a distance`() {
+        assertNull(distance("\"distance\": \"6 x 400m\""))
+        assertNull(distance("\"distance\": \"about 5 miles\""))
+    }
+
+    // --- restoring the app's own backup ---------------------------------------------------
+
+    @Test
+    fun `statuses from a backup come back, but run links do not`() {
+        val plan = parse(
+            """
+            {"workouts": [
+              {"date": "2026-11-16", "type": "easy", "status": "completed", "completedRunId": 7},
+              {"date": "2026-11-17", "type": "easy", "status": "skipped"},
+              {"date": "2026-11-18", "type": "easy", "status": "planned"},
+              {"date": "2026-11-20", "type": "easy"}
+            ]}
+            """,
+        )
+        assertEquals(
+            listOf(WorkoutStatus.COMPLETED, WorkoutStatus.SKIPPED, WorkoutStatus.PLANNED, WorkoutStatus.PLANNED),
+            plan.workouts.map { it.status },
+        )
+    }
+
     // --- the prompt's own example --------------------------------------------------------
 
     @Test
@@ -296,6 +350,14 @@ class PlanParserTest {
         val custom = prompt(8.0)
         assertTrue("complete 8-mile race training plan" in custom)
         assertEquals(Units.milesToMeters(8.0), parse(custom).raceDistanceMeters!!, 0.01)
+    }
+
+    @Test
+    fun `a race before the coming Monday starts the plan this week, not after the race`() {
+        // today is Thursday 2026-11-19; the race is that Sunday.
+        val prompt = PlanPrompt.build(PlanRequest(raceDate = LocalDate.of(2026, 11, 22), raceDistanceMiles = 3.1), today)
+        assertTrue("Plan starts: 2026-11-16 (a Monday) — that is 1 week of training" in prompt)
+        assertEquals(LocalDate.of(2026, 11, 17), parse(prompt).workouts.first().date)
     }
 
     @Test

@@ -47,7 +47,14 @@ data class PlanRequest(
 object PlanPrompt {
 
     fun build(request: PlanRequest, today: LocalDate): String {
-        val start = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY))
+        // Plans start on the coming Monday, unless the race comes first: then this
+        // week's, or the prompt would have training begin after the race.
+        val comingMonday = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY))
+        val start = if (request.raceDate.isBefore(comingMonday)) {
+            today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        } else {
+            comingMonday
+        }
         val weeks = ((request.raceDate.toEpochDay() - start.toEpochDay()) / 7 + 1)
             .coerceAtLeast(1)
         val distance = miles(request.raceDistanceMiles)
@@ -62,7 +69,7 @@ You are an experienced running coach. Write me a complete $race training plan.
 
 About me:
 - Race date: ${request.raceDate} (race distance $distance miles)
-- Plan starts: $start (a Monday) — that is $weeks weeks of training
+- Plan starts: $start (a Monday) — that is $weeks ${if (weeks == 1L) "week" else "weeks"} of training
 - I can run ${request.runsPerWeek} days per week
 - I currently run about ${miles(request.currentWeeklyMiles)} miles per week; my longest recent run is ${miles(request.longestRecentRunMiles)} miles$notes
 

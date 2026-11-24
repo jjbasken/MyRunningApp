@@ -217,8 +217,17 @@ object PlanParser {
             durationSec = duration.takeIf { type != WorkoutType.REST },
             paceFastSecPerMile = pace?.first.takeIf { type.isRun },
             paceSlowSecPerMile = pace?.second.takeIf { type.isRun },
+            status = parseStatus(obj.string("status")),
         )
     }
+
+    /** "completed" and "skipped", as the app's backup writes them; anything else is still to do. */
+    private fun parseStatus(text: String?): WorkoutStatus =
+        when (text?.trim()?.lowercase()) {
+            "completed", "complete", "done" -> WorkoutStatus.COMPLETED
+            "skipped" -> WorkoutStatus.SKIPPED
+            else -> WorkoutStatus.PLANNED
+        }
 
     private fun parseDate(text: String, label: String): LocalDate = try {
         LocalDate.parse(text.trim().take(10))
@@ -279,12 +288,34 @@ object PlanParser {
 
     // --- quantities ----------------------------------------------------------------
 
-    /** `<prefix>Miles`, `<prefix>Km` or `<prefix>Meters`, in metres. */
+    /**
+     * `<prefix>Miles`, `<prefix>Km` or `<prefix>Meters`, in metres. A bare
+     * `<prefix>` is read too, as assistants often write `"distance": "5 km"`:
+     * in the unit it names, or miles, the unit the prompt asks for.
+     */
     private fun readDistance(obj: JsonObject, prefix: String): Double? {
         obj.number("${prefix}Miles", "${prefix}_miles", "${prefix}Mi")?.let { return Units.milesToMeters(it) }
         obj.number("${prefix}Km", "${prefix}_km", "${prefix}Kilometers")?.let { return it * 1000.0 }
         obj.number("${prefix}Meters", "${prefix}_meters", "${prefix}M")?.let { return it }
-        return null
+        return readBareDistance(obj[prefix])
+    }
+
+    /**
+     * `5`, `"5"`, `"5 km"`, `"5K"`, `"400m"`, `"3.1 miles"`. Only a lone number and
+     * unit: `"6 x 400m"` describes a session, not a distance, and read as 6 metres
+     * it would have the coach call the workout done at the start line.
+     */
+    private fun readBareDistance(element: JsonElement?): Double? {
+        val primitive = (element as? JsonPrimitive)?.takeUnless { it is JsonNull } ?: return null
+        if (!primitive.isString) return primitive.doubleOrNull?.let(Units::milesToMeters)
+        val match = BARE_DISTANCE.matchEntire(primitive.content.trim().lowercase()) ?: return null
+        val value = match.groupValues[1].toDouble()
+        return when (match.groupValues[2]) {
+            "", "mi", "mile", "miles" -> Units.milesToMeters(value)
+            "k", "km", "kms", "kilometer", "kilometers", "kilometre", "kilometres" -> value * 1000.0
+            "m", "meter", "meters", "metre", "metres" -> value
+            else -> null
+        }
     }
 
     private fun readDuration(obj: JsonObject): Long? {
@@ -300,15 +331,26 @@ object PlanParser {
      */
     private fun readPace(obj: JsonObject, label: String): Pair<Double, Double>? {
         val text = obj.string("targetPace", "pace", "target_pace", "paceRange") ?: return null
-        val times = PACE_TIME.findAll(text).map { m ->
-            m.groupValues[1].toInt() * 60.0 + m.groupValues[2].toInt()
-        }.toList()
-        if (times.isEmpty()) return null // "conversational", "easy effort" — fine, no number to coach to.
+        val matches = PACE_TIME.findAll(text).toList()
+        // "conversational", "easy effort" — fine, no number to coach to.
+        val first = matches.firstOrNull() ?: return null
 
-        val perKm = Regex("(?i)km|kilomet").containsMatchIn(text)
-        val perMile = times.map { if (perKm) it / MILES_PER_KM else it }
+        // The second time is the other end of a range only when joined to the first
+        // by a dash or "to"; "9:30/mi (5:54/km)" is one pace said twice, not a range.
+        val second = matches.getOrNull(1)?.takeIf {
+            RANGE_JOIN.matches(text.substring(first.range.last + 1, it.range.first))
+        }
+        val rangeEnd = (second ?: first).range.last + 1
+        // The unit is the one written with this pace, up to any other pace that follows.
+        val unitText = text.substring(0, matches.firstOrNull { it.range.first >= rangeEnd }?.range?.first ?: text.length)
+        val perKm = Regex("(?i)km|kilomet").containsMatchIn(unitText)
+
+        val perMile = listOfNotNull(first, second).map { m ->
+            val seconds = m.groupValues[1].toInt() * 60.0 + m.groupValues[2].toInt()
+            if (perKm) seconds / MILES_PER_KM else seconds
+        }
         val fast = perMile.min()
-        val slow = perMile.take(2).max()
+        val slow = perMile.max()
         if (fast < FASTEST_PACE_SEC_PER_MILE || slow > SLOWEST_PACE_SEC_PER_MILE) {
             throw PlanImportException(PlanImportFailure.BAD_WORKOUT, "$label pace \"$text\"")
         }
@@ -316,6 +358,7 @@ object PlanParser {
     }
 
     private val PACE_TIME = Regex("(\\d{1,2}):([0-5]\\d)")
+    private val RANGE_JOIN = Regex("\\s*(-|–|—|to)\\s*", RegexOption.IGNORE_CASE)
 
     // --- JSON helpers -----------------------------------------------------------------
 
@@ -323,12 +366,19 @@ object PlanParser {
         (this[key] as? JsonPrimitive)?.takeUnless { it is JsonNull }?.contentOrNull
     }
 
-    /** A number, or a string holding one — "3.5" and 3.5 are the same distance. */
+    /**
+     * A number, or a string that starts with one — "3.5", "3.5 miles" and 3.5 are
+     * the same distance. A string with no leading number is no number.
+     */
     private fun JsonObject.number(vararg keys: String): Double? = keys.firstNotNullOfOrNull { key ->
         val primitive = this[key] as? JsonPrimitive ?: return@firstNotNullOfOrNull null
         if (primitive is JsonNull) return@firstNotNullOfOrNull null
-        primitive.doubleOrNull ?: primitive.contentOrNull?.trim()?.toDoubleOrNull()
+        primitive.doubleOrNull
+            ?: primitive.contentOrNull?.let { LEADING_NUMBER.find(it)?.value?.toDoubleOrNull() }
     }
+
+    private val LEADING_NUMBER = Regex("^\\s*\\d+(\\.\\d+)?")
+    private val BARE_DISTANCE = Regex("(\\d+(?:\\.\\d+)?)\\s*([a-z]*)\\.?")
 
     private fun JsonObject.int(vararg keys: String): Int? = number(*keys)?.toInt()
 

@@ -329,7 +329,8 @@ the phone, and the plan is plain JSON you can read and edit.
   Monday of `startDate`. With no `startDate`, the last week ends in race week;
   with neither date, week 1 is the coming Monday. Workouts may also be grouped
   as `"weeks": [{"week": 1, "workouts": [...]}]`.
-- **Targets** are all optional: `distanceMiles` / `distanceKm` / `distanceMeters`,
+- **Targets** are all optional: `distanceMiles` / `distanceKm` / `distanceMeters`
+  (or a bare `distance` such as `5`, `"5 km"` or `"800m"`; a bare number is miles),
   `durationMinutes`, and `targetPace` as one pace or a range, in `/mi` (the
   default) or `/km`.
 - **Types:** `easy`, `long`, `tempo`, `intervals`, `recovery`, `race`, `rest`,
@@ -376,8 +377,8 @@ the phone, and the plan is plain JSON you can read and edit.
 
 **Export all data** includes the plan (format version 2), with each workout's
 status and the run that did it. The plan section is in the import format, so
-opening a backup file from the Plan tab restores the plan, though not which
-workouts were done. A backup that carries a lot of GPS tracks is over the plan
+opening a backup file from the Plan tab restores the plan, including which
+workouts were done or skipped. Links to the runs themselves are not restored. A backup that carries a lot of GPS tracks is over the plan
 import size limit. Copy its `"plan"` object into a file of its own and open
 that instead.
 

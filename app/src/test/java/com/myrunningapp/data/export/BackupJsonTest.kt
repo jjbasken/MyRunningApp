@@ -161,6 +161,8 @@ class BackupJsonTest {
         assertEquals(workouts.map { it.title }, restored.workouts.map { it.title })
         assertEquals(Units.milesToMeters(3.0), restored.workouts.first().distanceMeters!!, 0.01)
         assertEquals(1800L, restored.workouts[1].durationSec)
+        // Done and skipped come back, so the weeks already run are not shown as missed.
+        assertEquals(workouts.map { it.status }, restored.workouts.map { it.status })
         // Rounded to whole seconds on the way through the file.
         assertEquals(555.0, restored.workouts.first().paceFastSecPerMile!!, 0.0)
         assertEquals(585.0, restored.workouts.first().paceSlowSecPerMile!!, 0.0)

@@ -256,8 +256,8 @@
     <string name="coach_race_week">Race week. Keep runs short and easy, sleep well, and don\'t try anything new on race day.</string>
     <string name="coach_taper">You\'re tapering. Running less now is how your legs get fresh for race day, so resist adding miles.</string>
     <plurals name="coach_missed">
-        <item quantity="one">You missed a run this week. Don\'t double up to catch up. Just pick the plan up where it is.</item>
-        <item quantity="other">You missed %1$d runs this week. Don\'t try to make them up. Pick the plan up where it is, and if this keeps happening, ask your assistant for a plan with fewer days.</item>
+        <item quantity="one">You missed a run in the past week. Don\'t double up to catch up. Just pick the plan up where it is.</item>
+        <item quantity="other">You missed %1$d runs in the past week. Don\'t try to make them up. Pick the plan up where it is, and if this keeps happening, ask your assistant for a plan with fewer days.</item>
     </plurals>
     <string name="coach_easy_too_fast">Your easy runs have been well ahead of their target pace. Slowing down builds endurance with less risk of injury, and keeps your legs fresh for the hard days.</string>
     <string name="coach_long_run_today">Long run today. Start slower than feels natural, and bring water if you\'ll be out over an hour.</string>

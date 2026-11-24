@@ -67,12 +67,23 @@ interface TrainingPlanDao {
     /**
      * Clears not-yet-done workouts on [epochDays], so a merged-in chunk replaces
      * them. Days rather than [LocalDate]s: the `date` column stores epoch days.
+     * A workout a run is recording against right now is kept (see [getSettledOn]).
      */
-    @Query("DELETE FROM plan_workouts WHERE planId = :planId AND status = 'PLANNED' AND date IN (:epochDays)")
+    @Query(
+        "DELETE FROM plan_workouts WHERE planId = :planId AND status = 'PLANNED' " +
+            "AND completedRunId IS NULL AND date IN (:epochDays)",
+    )
     suspend fun deletePlannedOn(planId: Long, epochDays: List<Long>)
 
-    /** Workouts on [epochDays] that are done or skipped, which a merged-in chunk must not duplicate. */
-    @Query("SELECT * FROM plan_workouts WHERE planId = :planId AND status != 'PLANNED' AND date IN (:epochDays)")
+    /**
+     * Workouts on [epochDays] that a merged-in chunk must neither replace nor
+     * duplicate: done, skipped, or being run right now. Deleting the last would
+     * leave the coached run to finish against a workout that no longer exists.
+     */
+    @Query(
+        "SELECT * FROM plan_workouts WHERE planId = :planId " +
+            "AND (status != 'PLANNED' OR completedRunId IS NOT NULL) AND date IN (:epochDays)",
+    )
     suspend fun getSettledOn(planId: Long, epochDays: List<Long>): List<PlanWorkoutEntity>
 
     /** Swaps the whole plan out in one go, so a failed import never leaves half of one. */
@@ -88,7 +99,7 @@ interface TrainingPlanDao {
      * Adds a later chunk of the same plan, returning how many workouts it added.
      *
      * Planned workouts on a date the chunk covers give way to the chunk's version.
-     * Workouts already done or skipped are kept, and each one stands in for one of
+     * Workouts already done or skipped (or being run) are kept, and each stands in for one of
      * the chunk's workouts on its date — the same type first, else any — so
      * re-importing weeks already under way does not put a fresh copy of a finished
      * run back on the calendar, to be nagged about as missed and coached again.

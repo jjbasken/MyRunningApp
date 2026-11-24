@@ -475,6 +475,30 @@ class AppDatabaseTest {
     }
 
     @Test
+    fun `merging leaves alone the workout a run is recording against`() = runTest {
+        val dao = db.trainingPlanDao()
+        val day = LocalDate.of(2026, 12, 1)
+        val planId = dao.replacePlan(plan(), listOf(workout(day, "Being run")))
+        val workoutId = dao.observeWorkouts(planId).first().single().workout.id
+        val runId = db.runDao().insert(
+            RunEntity(
+                startedAt = Instant.ofEpochSecond(1_000), endedAt = Instant.ofEpochSecond(1_000),
+                activityType = ActivityType.RUN, distanceMeters = 0.0, movingDurationSec = 0,
+                elapsedDurationSec = 0, avgPaceSecPerMile = 0.0, calories = 0, weightKgAtRun = 70.0,
+            ),
+        )
+        dao.linkRunInProgress(workoutId, runId)
+
+        val added = dao.mergeIntoPlan(planId, listOf(workout(day, "Chunk's version")))
+
+        // Not deleted from under the run, and not doubled either.
+        assertEquals(0, added)
+        val only = dao.observeWorkouts(planId).first().single().workout
+        assertEquals(workoutId, only.id)
+        assertEquals(runId, only.completedRunId)
+    }
+
+    @Test
     fun `a finished day whose type the chunk changed still is not doubled`() = runTest {
         val dao = db.trainingPlanDao()
         val day = LocalDate.of(2026, 12, 1)

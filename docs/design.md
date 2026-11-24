@@ -368,7 +368,8 @@ Each milestone builds, runs, and is testable on its own.
    needed no schema change. The coaching itself does not resume, because the run
    does not: a salvaged run is a finished run. The full backup (version 2)
    carries the plan in `PlanParser`'s own format, and the parser looks inside
-   a backup file for it.
+   a backup file for it. Statuses are restored, but run links are not: a
+   backup's run ids need not exist on the device it is restored to.
 
 ## Verification
 

@@ -91,4 +91,10 @@ data class ParsedWorkout(
     val durationSec: Long?,
     val paceFastSecPerMile: Double?,
     val paceSlowSecPerMile: Double?,
+    /**
+     * PLANNED for anything an assistant writes. A plan restored from the app's own
+     * backup brings back which workouts were done or skipped, so the weeks already
+     * run do not come back looking missed.
+     */
+    val status: WorkoutStatus = WorkoutStatus.PLANNED,
 )

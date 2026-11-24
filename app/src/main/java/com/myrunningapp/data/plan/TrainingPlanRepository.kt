@@ -136,7 +136,8 @@ class TrainingPlanRepository @Inject constructor(
         durationSec = durationSec,
         paceFastSecPerMile = paceFastSecPerMile,
         paceSlowSecPerMile = paceSlowSecPerMile,
-        status = WorkoutStatus.PLANNED,
+        status = status,
+        // A backup's run ids name runs in that backup, which need not exist here.
         completedRunId = null,
     )
 
