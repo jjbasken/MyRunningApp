@@ -85,6 +85,31 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Robolectric downloads its Android runtime jar from Maven Central the first
+// time a test needs it, outside Gradle and so outside CI's Gradle cache. Every
+// CI run fetched it afresh, and Maven Central rate-limits shared runners (HTTP
+// 429), failing whichever test classes asked first. Resolving the jar here puts
+// it in Gradle's cache, and offline mode has Robolectric use that copy instead
+// of fetching. Locally it behaves the same: one download, then cached.
+val robolectricRuntime: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+tasks.withType<Test>().configureEach {
+    val runtimeJars: FileCollection = robolectricRuntime
+    inputs.files(runtimeJars).withPropertyName("robolectricRuntime").withPathSensitivity(PathSensitivity.NAME_ONLY)
+    jvmArgumentProviders += CommandLineArgumentProvider {
+        // Gradle stores each artifact as <hash dir>/<artifactId>-<version>.jar,
+        // the name Robolectric's offline mode looks for in its dependency dir.
+        listOf(
+            "-Drobolectric.offline=true",
+            "-Drobolectric.dependency.dir=${runtimeJars.singleFile.parentFile.absolutePath}",
+        )
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -135,6 +160,7 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
     testImplementation(libs.robolectric)
+    robolectricRuntime(libs.robolectric.android.all)
     testImplementation(libs.androidx.room.testing)
     testImplementation(libs.androidx.test.core)
 
