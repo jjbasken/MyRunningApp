@@ -10,11 +10,14 @@ import com.myrunningapp.data.db.dao.ProfileDao
 import com.myrunningapp.data.db.dao.RunDao
 import com.myrunningapp.data.db.dao.RunPointDao
 import com.myrunningapp.data.db.dao.SplitDao
+import com.myrunningapp.data.db.dao.TrainingPlanDao
 import com.myrunningapp.data.db.entity.HealthDeletionEntity
 import com.myrunningapp.data.db.entity.ProfileEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
+import com.myrunningapp.data.db.entity.PlanWorkoutEntity
 import com.myrunningapp.data.db.entity.SplitEntity
+import com.myrunningapp.data.db.entity.TrainingPlanEntity
 
 @Database(
     entities = [
@@ -23,8 +26,10 @@ import com.myrunningapp.data.db.entity.SplitEntity
         SplitEntity::class,
         ProfileEntity::class,
         HealthDeletionEntity::class,
+        TrainingPlanEntity::class,
+        PlanWorkoutEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -34,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun splitDao(): SplitDao
     abstract fun profileDao(): ProfileDao
     abstract fun healthSyncDao(): HealthSyncDao
+    abstract fun trainingPlanDao(): TrainingPlanDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -63,6 +69,43 @@ abstract class AppDatabase : RoomDatabase() {
                         requestedAt INTEGER NOT NULL
                     )
                     """.trimIndent(),
+                )
+            }
+        }
+
+        /**
+         * Adds the training plan. Purely additive: no existing table changes,
+         * and the app has no plan until the user imports one. The SQL mirrors
+         * what Room generates for the two entities, which Room checks on open.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `training_plans` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `raceDate` INTEGER, " +
+                        "`raceDistanceMeters` REAL, `importedAt` INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `plan_workouts` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`planId` INTEGER NOT NULL, `date` INTEGER NOT NULL, " +
+                        "`type` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT NOT NULL, " +
+                        "`distanceMeters` REAL, `durationSec` INTEGER, " +
+                        "`paceFastSecPerMile` REAL, `paceSlowSecPerMile` REAL, " +
+                        "`status` TEXT NOT NULL, `completedRunId` INTEGER, " +
+                        "FOREIGN KEY(`planId`) REFERENCES `training_plans`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE , " +
+                        "FOREIGN KEY(`completedRunId`) REFERENCES `runs`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE SET NULL )",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_plan_workouts_planId_date` " +
+                        "ON `plan_workouts` (`planId`, `date`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_plan_workouts_completedRunId` " +
+                        "ON `plan_workouts` (`completedRunId`)",
                 )
             }
         }

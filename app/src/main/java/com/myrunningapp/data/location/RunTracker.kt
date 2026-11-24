@@ -2,6 +2,9 @@ package com.myrunningapp.data.location
 
 import com.myrunningapp.domain.announce.Announcement
 import com.myrunningapp.domain.announce.Announcer
+import com.myrunningapp.data.plan.WorkoutLog
+import com.myrunningapp.domain.plan.PlannedWorkout
+import com.myrunningapp.domain.plan.WorkoutCoach
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
 import com.myrunningapp.domain.tracking.MonotonicClock
@@ -32,6 +35,10 @@ import javax.inject.Singleton
  * this class decides what is worth saying out loud, so the notification, the screen
  * and the announcements all follow from the same events.
  *
+ * A run started against a planned workout also gets a [WorkoutCoach], whose lines
+ * are spoken alongside the tracker's own, and on finish the workout is reported
+ * to [workoutLog] as done.
+ *
  * Every mutating call takes a [Mutex], so GPS callbacks and button presses cannot
  * interleave inside the [RunSession], which is not thread-safe.
  */
@@ -41,6 +48,7 @@ class RunTracker @Inject constructor(
     private val announcer: Announcer,
     private val clock: Clock,
     private val monotonicClock: MonotonicClock,
+    private val workoutLog: WorkoutLog = WorkoutLog.None,
 ) {
 
     private val mutex = Mutex()
@@ -57,7 +65,12 @@ class RunTracker @Inject constructor(
     /** Accepted points, including those not yet flushed to Room. */
     val route: StateFlow<List<TrackedPoint>> = _route.asStateFlow()
 
+    private val _activeWorkout = MutableStateFlow<PlannedWorkout?>(null)
+    /** The planned workout this run is being coached against, if any. */
+    val activeWorkout: StateFlow<PlannedWorkout?> = _activeWorkout.asStateFlow()
+
     private var session: RunSession? = null
+    private var coach: WorkoutCoach? = null
     private var runId: Long? = null
 
     /** Points accepted but not yet written, held back so Room is not hit per fix. */
@@ -67,11 +80,15 @@ class RunTracker @Inject constructor(
     /**
      * Begins a run, after a countdown if one is configured. Does nothing if a run
      * is already under way.
+     *
+     * @param workout today's planned workout, to coach this run against. Ignored
+     *   for anything but a run, and for a workout that is not a run.
      */
     suspend fun start(
         activityType: ActivityType,
         countdownSeconds: Int,
         weightKg: Double,
+        workout: PlannedWorkout? = null,
     ) = mutex.withLock {
         if (session?.snapshot?.isActive == true) return@withLock
 
@@ -83,6 +100,10 @@ class RunTracker @Inject constructor(
         lastFlushElapsedMillis = null
         _lastFinishedRunId.value = null
         this.weightKg = weightKg
+        coach = workout
+            ?.takeIf { activityType == ActivityType.RUN && WorkoutCoach.coaches(it) }
+            ?.let(::WorkoutCoach)
+        _activeWorkout.value = coach?.workout
 
         handle(fresh, fresh.start(clock.instant(), monotonicClock.elapsedRealtimeMillis()))
     }
@@ -146,6 +167,11 @@ class RunTracker @Inject constructor(
         val id = runId
         if (id != null) {
             recorder.finishRun(id, summary, endedAt)
+            // A run that never left the start line has not done the workout.
+            val workoutId = coach?.workout?.id
+            if (workoutId != null && summary.distanceMeters > 0.0) {
+                workoutLog.recordWorkoutRun(workoutId, id)
+            }
             _lastFinishedRunId.value = id
         }
         announcer.announce(
@@ -176,6 +202,7 @@ class RunTracker @Inject constructor(
         }
         flush(force = events.any { it is RunSessionEvent.MileCompleted })
         announce(events, live.activityType)
+        coach?.onProgress(live.snapshot)?.let(announcer::announce)
         publish(live)
     }
 
@@ -189,20 +216,25 @@ class RunTracker @Inject constructor(
     private fun announce(events: List<RunSessionEvent>, activityType: ActivityType) {
         events.forEach { event ->
             when (event) {
-                is RunSessionEvent.TrackingStarted ->
+                is RunSessionEvent.TrackingStarted -> {
                     announcer.announce(Announcement.Started)
+                    coach?.let { announcer.announce(it.intro()) }
+                }
                 is RunSessionEvent.CountdownTick ->
                     if (event.secondsRemaining in 1..COUNTDOWN_CUE_FROM) {
                         announcer.announce(Announcement.CountdownCue(event.secondsRemaining))
                     }
-                is RunSessionEvent.MileCompleted -> announcer.announce(
-                    Announcement.MileCompleted(
-                        mileNumber = event.split.splitNumber,
-                        totalMovingSec = event.split.cumulativeMovingSec,
-                        lastMilePaceSec = event.split.paceSecPerMile,
-                        activityType = activityType,
-                    ),
-                )
+                is RunSessionEvent.MileCompleted -> {
+                    announcer.announce(
+                        Announcement.MileCompleted(
+                            mileNumber = event.split.splitNumber,
+                            totalMovingSec = event.split.cumulativeMovingSec,
+                            lastMilePaceSec = event.split.paceSecPerMile,
+                            activityType = activityType,
+                        ),
+                    )
+                    coach?.onMile(event.split)?.let(announcer::announce)
+                }
                 else -> Unit
             }
         }
@@ -235,6 +267,8 @@ class RunTracker @Inject constructor(
 
     private fun clear() {
         session = null
+        coach = null
+        _activeWorkout.value = null
         _route.value = emptyList()
         runId = null
         buffer.clear()

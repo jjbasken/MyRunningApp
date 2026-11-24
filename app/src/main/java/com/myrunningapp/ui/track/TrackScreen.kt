@@ -61,6 +61,8 @@ import com.myrunningapp.ui.permissions.appSettingsIntent
 import com.myrunningapp.ui.permissions.backgroundLocationNeedsSettings
 import com.myrunningapp.ui.permissions.foregroundPermissions
 import com.myrunningapp.ui.permissions.locationGrants
+import com.myrunningapp.ui.plan.CoachingBanner
+import com.myrunningapp.ui.plan.TodaysWorkoutCard
 
 @Composable
 fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hiltViewModel()) {
@@ -72,6 +74,7 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val startRequest by viewModel.startRequest.collectAsStateWithLifecycle()
     val lastFinishedRunId by viewModel.lastFinishedRunId.collectAsStateWithLifecycle()
+    val activeWorkout by viewModel.activeWorkout.collectAsStateWithLifecycle()
 
     // The permission round trip loses the button's argument, so hold on to it.
     var pendingCountdown by rememberSaveable { mutableStateOf(false) }
@@ -159,6 +162,7 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
                 activityType = request.activityType,
                 countdownSeconds = request.countdownSeconds,
                 weightKg = request.weightKg,
+                workoutId = request.workoutId,
             ),
         )
         viewModel.onStartHandled()
@@ -218,6 +222,20 @@ fun TrackScreen(onRunClick: (Long) -> Unit = {}, viewModel: TrackViewModel = hil
                 }) {
                     Text(stringResource(R.string.map_show_location))
                 }
+            }
+            val idle = state.snapshot.state == RunSessionState.IDLE ||
+                state.snapshot.state == RunSessionState.FINISHED
+            if (idle) {
+                state.todaysWorkout?.let { workout ->
+                    TodaysWorkoutCard(
+                        workout = workout,
+                        coach = state.coachTodaysWorkout,
+                        willCoach = state.selectedActivityType == ActivityType.RUN,
+                        onCoachChange = viewModel::setCoachTodaysWorkout,
+                    )
+                }
+            } else {
+                activeWorkout?.let { CoachingBanner(it) }
             }
             StatsBlock(state.snapshot)
         }

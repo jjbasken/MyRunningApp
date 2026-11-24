@@ -335,6 +335,31 @@ Each milestone builds, runs, and is testable on its own.
    there was no way to add it without moving both — `targetSdk` stays at 35,
    since raising it is a separate decision this milestone had no reason to make.
 
+8. **Training plan & coach** — imports an AI-written race plan and coaches
+   runs against it. *No AI call in the app:* `PlanPrompt` writes a prompt
+   carrying the whole contract (schema, week/day numbering, "JSON only"), the
+   runner takes it to any assistant, and `PlanParser` reads the reply back. The
+   parser is forgiving about how a chat reply arrives (fences, preamble,
+   trailing commas, week/day or dates, /mi or /km, nested `weeks`) because the
+   reply comes through the clipboard. Week/day numbering anchored on
+   `startDate` is asked for in place of calendar dates, because models get
+   weekdays wrong over a 52-week span. The same anchor lets a reply that ran out
+   of room be finished in a second chunk and merged. Two tables arrive in
+   database v4: `training_plans` (one row is kept) and `plan_workouts`, whose
+   `completedRunId` is `ON DELETE SET NULL` rather than cascade, so deleting a
+   run from history never un-does the plan's record that the day was done.
+   *Coaching follows the announcement design:* `WorkoutCoach` is pure and
+   decides when to speak (intro after "Go", a pace verdict plus distance left
+   after each mile line, halfway for timed workouts, target reached once), and
+   `AnnouncementText` owns the words. `RunTracker` holds the coach for the run
+   it is recording and reports the finished run through a `WorkoutLog` seam,
+   so tracker tests need no database. The verdict rules are coaching choices,
+   not math: no verdict on intervals or tempo (mile averages mix reps and
+   recoveries), no "too slow" on easy or recovery days, and "slow" read kindly
+   except on race day. The Plan tab's coach card comes from `PlanOverview.of`,
+   also pure, which ranks race week and taper above missed runs, missed runs
+   above pace drift, and stays quiet about deliberately skipped workouts.
+
 ## Verification
 
 - **Per milestone:** `./gradlew assembleDebug` builds; `./gradlew testDebugUnitTest`

@@ -16,7 +16,12 @@ import androidx.test.core.app.ApplicationProvider
 import com.myrunningapp.data.db.entity.ProfileEntity
 import com.myrunningapp.data.db.entity.RunEntity
 import com.myrunningapp.data.db.entity.RunPointEntity
+import com.myrunningapp.data.db.entity.PlanWorkoutEntity
 import com.myrunningapp.data.db.entity.SplitEntity
+import com.myrunningapp.data.db.entity.TrainingPlanEntity
+import com.myrunningapp.domain.plan.WorkoutStatus
+import com.myrunningapp.domain.plan.WorkoutType
+import java.time.LocalDate
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.HealthSyncState
 import com.myrunningapp.domain.model.Sex
@@ -250,7 +255,7 @@ class AppDatabaseTest {
             )
             helper.close()
             db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
                 .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
             val run = db.runDao().observeAll().first().single()
             assertEquals(100.0, run.distanceMeters, 0.0)
@@ -305,7 +310,7 @@ class AppDatabaseTest {
             )
             helper.close()
             db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
                 .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
 
             val run = db.runDao().getById(1)!!
@@ -320,4 +325,155 @@ class AppDatabaseTest {
         }
     }
 
+    @Test
+    fun `migrating to 4 keeps runs and starts with no plan`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "migration-3-4-test.db"
+        context.deleteDatabase(name)
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(name)
+                .callback(object : SupportSQLiteOpenHelper.Callback(3) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        val schema = JSONObject(
+                            javaClass.classLoader!!
+                                .getResourceAsStream("com.myrunningapp.data.db.AppDatabase/3.json")!!
+                                .reader().readText(),
+                        )
+                        val entities = schema.getJSONObject("database").getJSONArray("entities")
+                        for (i in 0 until entities.length()) {
+                            val entity = entities.getJSONObject(i)
+                            val table = entity.getString("tableName")
+                            db.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", table))
+                            val indices = entity.getJSONArray("indices")
+                            for (j in 0 until indices.length()) {
+                                db.execSQL(indices.getJSONObject(j).getString("createSql")
+                                    .replace("\${TABLE_NAME}", table))
+                            }
+                        }
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                }).build(),
+        )
+        try {
+            helper.writableDatabase.execSQL(
+                "INSERT INTO runs VALUES (1, 1000, 31000, 'RUN', 100.0, 30, 30, 482.8, 7, 70.0, 0, 0, 'SYNCED', 2)",
+            )
+            helper.close()
+            // Room validates the migrated tables against the entities on open, so
+            // reaching the DAO at all proves MIGRATION_3_4 matches them.
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+                .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
+
+            assertNull(db.trainingPlanDao().getActivePlan())
+            val run = db.runDao().getById(1)!!
+            assertEquals(HealthSyncState.SYNCED, run.healthSyncState)
+            assertEquals(100.0, run.distanceMeters, 0.0)
+        } finally {
+            helper.close()
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    // --- training plan ------------------------------------------------------------
+
+    private fun plan(name: String = "Half") = TrainingPlanEntity(
+        name = name, raceDate = LocalDate.of(2027, 11, 14), raceDistanceMeters = 21_097.5,
+        importedAt = Instant.ofEpochSecond(5_000),
+    )
+
+    private fun workout(date: LocalDate, title: String = "Easy run", status: WorkoutStatus = WorkoutStatus.PLANNED) =
+        PlanWorkoutEntity(
+            planId = 0, date = date, type = WorkoutType.EASY, title = title, description = "",
+            distanceMeters = 4828.0, durationSec = null, paceFastSecPerMile = 690.0,
+            paceSlowSecPerMile = 750.0, status = status, completedRunId = null,
+        )
+
+    @Test
+    fun `importing a plan replaces the previous one whole`() = runTest {
+        val dao = db.trainingPlanDao()
+        val first = dao.replacePlan(plan("Old"), listOf(workout(LocalDate.of(2026, 12, 1))))
+        val second = dao.replacePlan(
+            plan("New"),
+            listOf(workout(LocalDate.of(2026, 12, 2)), workout(LocalDate.of(2026, 12, 4))),
+        )
+
+        assertEquals("New", dao.getActivePlan()!!.name)
+        assertTrue(dao.observeWorkouts(first).first().isEmpty())
+        val workouts = dao.observeWorkouts(second).first()
+        assertEquals(listOf(LocalDate.of(2026, 12, 2), LocalDate.of(2026, 12, 4)), workouts.map { it.workout.date })
+    }
+
+    @Test
+    fun `merging more weeks keeps finished workouts and replaces planned ones`() = runTest {
+        val dao = db.trainingPlanDao()
+        val planId = dao.replacePlan(
+            plan(),
+            listOf(
+                workout(LocalDate.of(2026, 12, 1), "Done", WorkoutStatus.COMPLETED),
+                workout(LocalDate.of(2026, 12, 3), "Old version"),
+            ),
+        )
+        dao.mergeIntoPlan(
+            planId,
+            listOf(
+                workout(LocalDate.of(2026, 12, 1), "Chunk day one"),
+                workout(LocalDate.of(2026, 12, 3), "New version"),
+                workout(LocalDate.of(2026, 12, 8), "Week two"),
+            ),
+        )
+
+        val titles = dao.observeWorkouts(planId).first().map { it.workout.title }
+        assertEquals(listOf("Done", "Chunk day one", "New version", "Week two"), titles)
+    }
+
+    @Test
+    fun `a completed workout reports its run and outlives that run being deleted`() = runTest {
+        val dao = db.trainingPlanDao()
+        val planId = dao.replacePlan(plan(), listOf(workout(LocalDate.of(2026, 12, 1))))
+        val workoutId = dao.observeWorkouts(planId).first().single().workout.id
+        val runId = db.runDao().insert(
+            RunEntity(
+                startedAt = Instant.ofEpochSecond(1_000), endedAt = Instant.ofEpochSecond(3_000),
+                activityType = ActivityType.RUN, distanceMeters = 5000.0, movingDurationSec = 1900,
+                elapsedDurationSec = 2000, avgPaceSecPerMile = 611.0, calories = 400, weightKgAtRun = 70.0,
+            ),
+        )
+
+        dao.setStatus(workoutId, WorkoutStatus.COMPLETED, runId)
+        val linked = dao.observeWorkouts(planId).first().single()
+        assertEquals(runId, linked.workout.completedRunId)
+        assertEquals(5000.0, linked.runDistanceMeters!!, 0.0)
+        assertEquals(611.0, linked.runPaceSecPerMile!!, 0.0)
+
+        db.runDao().deleteById(runId)
+        val orphaned = dao.observeWorkouts(planId).first().single()
+        assertNull(orphaned.workout.completedRunId)
+        assertEquals(WorkoutStatus.COMPLETED, orphaned.workout.status)
+        assertNull(orphaned.runDistanceMeters)
+    }
+
+    @Test
+    fun `deleting the plan takes its workouts but leaves runs alone`() = runTest {
+        val dao = db.trainingPlanDao()
+        val runId = db.runDao().insert(
+            RunEntity(
+                startedAt = Instant.ofEpochSecond(1_000), endedAt = Instant.ofEpochSecond(3_000),
+                activityType = ActivityType.RUN, distanceMeters = 5000.0, movingDurationSec = 1900,
+                elapsedDurationSec = 2000, avgPaceSecPerMile = 611.0, calories = 400, weightKgAtRun = 70.0,
+            ),
+        )
+        val planId = dao.replacePlan(plan(), listOf(workout(LocalDate.of(2026, 12, 1))))
+        val workoutId = dao.observeWorkouts(planId).first().single().workout.id
+        dao.setStatus(workoutId, WorkoutStatus.COMPLETED, runId)
+
+        dao.deleteAllPlans()
+
+        assertNull(dao.getActivePlan())
+        assertNull(dao.getWorkout(workoutId))
+        assertEquals(5000.0, db.runDao().getById(runId)!!.distanceMeters, 0.0)
+    }
 }

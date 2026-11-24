@@ -15,6 +15,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.myrunningapp.MainActivity
 import com.myrunningapp.R
+import com.myrunningapp.data.plan.TrainingPlanRepository
 import com.myrunningapp.domain.Units
 import com.myrunningapp.domain.model.ActivityType
 import com.myrunningapp.domain.model.RunSessionState
@@ -40,6 +41,7 @@ class LocationTrackingService : LifecycleService() {
 
     @Inject lateinit var tracker: RunTracker
     @Inject lateinit var locationClient: LocationClient
+    @Inject lateinit var planRepository: TrainingPlanRepository
 
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -67,6 +69,7 @@ class LocationTrackingService : LifecycleService() {
         )
         val countdownSeconds = intent.getIntExtra(EXTRA_COUNTDOWN_SECONDS, 0)
         val weightKg = intent.getDoubleExtra(EXTRA_WEIGHT_KG, 0.0)
+        val workoutId = intent.getLongExtra(EXTRA_WORKOUT_ID, NO_WORKOUT).takeIf { it != NO_WORKOUT }
 
         createNotificationChannel()
         ServiceCompat.startForeground(
@@ -84,7 +87,10 @@ class LocationTrackingService : LifecycleService() {
         lifecycleScope.launch {
             // Strictly after start: the tracker is still IDLE until it returns, and
             // the notification mirror stops the service the moment it sees IDLE.
-            tracker.start(activityType, countdownSeconds, weightKg)
+            // Read here rather than passed whole: an intent extra cannot carry the
+            // workout, and the row is the truth if the plan changed a moment ago.
+            val workout = workoutId?.let { planRepository.getWorkout(it) }
+            tracker.start(activityType, countdownSeconds, weightKg, workout)
             collectFixes()
             keepTheClockMoving()
             mirrorIntoNotification()
@@ -239,6 +245,8 @@ class LocationTrackingService : LifecycleService() {
         private const val EXTRA_ACTIVITY_TYPE = "activity_type"
         private const val EXTRA_COUNTDOWN_SECONDS = "countdown_seconds"
         private const val EXTRA_WEIGHT_KG = "weight_kg"
+        private const val EXTRA_WORKOUT_ID = "workout_id"
+        private const val NO_WORKOUT = -1L
 
         private const val CHANNEL_ID = "run_tracking"
         private const val NOTIFICATION_ID = 1
@@ -253,11 +261,13 @@ class LocationTrackingService : LifecycleService() {
             activityType: ActivityType,
             countdownSeconds: Int,
             weightKg: Double,
+            workoutId: Long? = null,
         ): Intent = Intent(context, LocationTrackingService::class.java).apply {
             action = ACTION_START
             putExtra(EXTRA_ACTIVITY_TYPE, activityType.name)
             putExtra(EXTRA_COUNTDOWN_SECONDS, countdownSeconds)
             putExtra(EXTRA_WEIGHT_KG, weightKg)
+            putExtra(EXTRA_WORKOUT_ID, workoutId ?: NO_WORKOUT)
         }
 
         fun commandIntent(context: Context, action: String): Intent =

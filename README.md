@@ -75,7 +75,7 @@ be checked in seconds rather than on a run.
 6. **Polish** — permission rationale flow with graceful degradation,
    notification controls, GPX/JSON export, and the pace-coloured route. Fixes
    from field testing are still outstanding; they need a real run first.
-7. **Health Connect sync** *(current)* — finished runs are written to Health
+7. **Health Connect sync** — finished runs are written to Health
    Connect so other apps can read them, off by default and write-only: nothing
    is ever read back. A Room outbox drives it, deletions get their own table
    since deleting a run also deletes the row that would have remembered the
@@ -85,6 +85,12 @@ be checked in seconds rather than on a run.
    [`docs/play-health-declaration.md`](docs/play-health-declaration.md) for the
    Play Console paperwork this milestone prepares — needed only if the app is
    ever published to Play, not for sideloading.
+
+8. **Training plan & coach** *(current)* — import a race training plan
+   written by an AI assistant and follow it: a Plan tab with the weeks laid out,
+   today's workout on the Track screen, spoken coaching during the run, and each
+   run ticked off the plan when it finishes. See
+   [Training plans (Milestone 8)](#training-plans-milestone-8).
 
 ## Interrupted activities and privacy
 
@@ -283,3 +289,80 @@ automatable):
   immediately rather than only after several seconds.
 - On a device with no Health Connect installed, the settings section is absent
   entirely.
+
+## Training plans (Milestone 8)
+
+The app does not call an AI service. It writes a prompt, you paste it into the
+assistant of your choice, and you paste the reply back. Your runs never leave
+the phone, and the plan is plain JSON you can read and edit.
+
+1. **Plan → Write AI prompt.** Enter the race date, how many days a week you
+   can run, and where your running is now. **Copy prompt**, or **Share to an
+   app** to send it straight to a chat app.
+2. Send it to the assistant. A year-long plan is long; if the reply stops partway
+   (the prompt asks it to stop at the end of a week), ask for the rest.
+3. Copy the reply and tap **Paste plan**, or save it as a `.json` file and use
+   **Open file**. A second chunk of the same plan asks **Replace** or **Add to
+   current plan**. Adding keeps every workout already done.
+
+### The format
+
+```json
+{
+  "name": "Half marathon plan",
+  "startDate": "2026-11-23",
+  "raceDate": "2027-11-14",
+  "raceDistanceMiles": 13.1,
+  "workouts": [
+    { "week": 1, "day": "Tue", "type": "easy", "title": "Easy run",
+      "distanceMiles": 3, "targetPace": "11:30-12:30", "description": "Conversational." },
+    { "week": 1, "day": "Sat", "type": "long", "durationMinutes": 45 }
+  ]
+}
+```
+
+- **Dates:** either `"date": "YYYY-MM-DD"`, or `week` + `day` counted from the
+  Monday of `startDate`. With no `startDate`, the last week ends in race week;
+  with neither date, week 1 is the coming Monday. Workouts may also be grouped
+  as `"weeks": [{"week": 1, "workouts": [...]}]`.
+- **Targets** are all optional: `distanceMiles` / `distanceKm` / `distanceMeters`,
+  `durationMinutes`, and `targetPace` as one pace or a range, in `/mi` (the
+  default) or `/km`.
+- **Types:** `easy`, `long`, `tempo`, `intervals`, `recovery`, `race`, `rest`,
+  `cross_train`. Common synonyms ("threshold", "hill repeats", "fartlek",
+  "strength") are recognised.
+- Code fences, a sentence of preamble, comments and trailing commas are all
+  tolerated, because the text arrives by copy and paste.
+
+### Coaching
+
+- **Before the run:** the Track screen shows today's workout. Runs started
+  while **Coach this run** is on (the default) are coached against it. Walks
+  and rides never are.
+- **During the run:** after "Go" the coach reads the workout. At each mile,
+  after the usual split, it gives a pace verdict against the target range and
+  says how far is left. When the planned distance (or time) is done, it says
+  so. The run keeps recording until you press Finish. Interval and tempo
+  sessions get no pace verdict, because their mile averages mix fast reps with
+  recoveries. Easy and recovery runs are never told off for being slow.
+- **After the run:** the workout is marked done and linked to the run, so its
+  detail shows what you actually ran. Workouts can also be marked done or
+  skipped by hand. Deleting a run keeps the workout done.
+- **Between runs:** the Plan tab's coach card covers race week, the taper,
+  missed runs ("don't double up"), easy runs drifting too fast, long-run days,
+  and how many of the runs due so far are done.
+
+### Checking it on a device
+
+- Import the example above with today's date inside week 1, open **Track**, and
+  confirm the "Today's workout" card appears for a run day and not on a rest day.
+- Start a run with coaching on and listen for the workout intro after "Go".
+  At the first mile, the split line should be followed by a pace verdict and the
+  distance left.
+- Finish, then open **Plan**: the workout shows as done, and tapping it offers
+  **View run**.
+- Import a second chunk with **Add to current plan** and check that finished
+  workouts survive.
+
+Plans are not included in the JSON backup export yet.
+

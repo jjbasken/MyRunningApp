@@ -1,6 +1,7 @@
 package com.myrunningapp.domain.announce
 
 import com.myrunningapp.domain.Units
+import com.myrunningapp.domain.plan.WorkoutType
 import java.util.Locale
 import kotlin.math.roundToLong
 
@@ -26,7 +27,79 @@ object AnnouncementText {
         Announcement.Resumed -> "Resumed."
         is Announcement.MileCompleted -> mileLine(announcement)
         is Announcement.Finished -> finishLine(announcement)
+        is Announcement.WorkoutIntro -> workoutIntro(announcement)
+        is Announcement.WorkoutCheckIn -> checkIn(announcement)
+        is Announcement.WorkoutHalfway ->
+            "Halfway. ${spokenDuration(roundUpToMinute(announcement.remainingSec))} to go."
+        is Announcement.WorkoutTargetReached -> targetReached(announcement)
     }
+
+    // --- coaching ------------------------------------------------------------
+
+    /**
+     * "Today's workout: Long run. 6 miles. Target pace, 11 minutes to 11 minutes
+     * 30 seconds per mile."
+     */
+    private fun workoutIntro(event: Announcement.WorkoutIntro): String = buildString {
+        append("Today's workout: ")
+        append(event.title.trimEnd('.'))
+        append(".")
+        val target = when {
+            event.distanceMeters != null -> decimalMiles(event.distanceMeters)
+            event.durationSec != null -> spokenDuration(event.durationSec)
+            else -> null
+        }
+        target?.let { append(" ").append(it).append(".") }
+        val fast = event.paceFastSecPerMile
+        val slow = event.paceSlowSecPerMile
+        if (fast != null && slow != null) {
+            append(" Target pace, ")
+            append(spokenDuration(fast.roundToLong()))
+            if (slow.roundToLong() != fast.roundToLong()) {
+                append(" to ")
+                append(spokenDuration(slow.roundToLong()))
+            }
+            append(" per mile.")
+        }
+    }
+
+    /**
+     * "20 seconds faster than target. Ease off a little. 2 miles to go."
+     *
+     * Slow is read kindly except on race day: on a long run, finishing the
+     * distance matters more than the pace, and nagging someone who is already
+     * tired is how runs get abandoned.
+     */
+    private fun checkIn(event: Announcement.WorkoutCheckIn): String = buildList {
+        when (event.verdict) {
+            Announcement.PaceVerdict.ON_TARGET -> add("Right on target pace.")
+            Announcement.PaceVerdict.TOO_FAST -> add(
+                "${plural(event.secondsOff, "second")} faster than target. " +
+                    if (event.workoutType == WorkoutType.RACE) "Save some for later." else "Ease off a little.",
+            )
+            Announcement.PaceVerdict.TOO_SLOW -> add(
+                "${plural(event.secondsOff, "second")} slower than target. " +
+                    if (event.workoutType == WorkoutType.RACE) "Pick it up if you can." else "That's okay, keep it steady.",
+            )
+            null -> Unit
+        }
+        event.remainingMeters?.let { add("${decimalMiles(it)} to go.") }
+            ?: event.remainingSec?.let { add("${spokenDuration(roundUpToMinute(it))} to go.") }
+    }.joinToString(" ")
+
+    /** "Workout complete. 6 miles done. Great work — cool down, then press finish." */
+    private fun targetReached(event: Announcement.WorkoutTargetReached): String = buildString {
+        append("Workout complete. ")
+        when {
+            event.distanceMeters != null -> append(decimalMiles(event.distanceMeters)).append(" done. ")
+            event.durationSec != null -> append(spokenDuration(event.durationSec)).append(" done. ")
+        }
+        append("Great work. Cool down, then press finish.")
+    }
+
+    /** Time left is read in whole minutes: "12 minutes to go", never "11 minutes 37 seconds". */
+    private fun roundUpToMinute(seconds: Long): Long =
+        if (seconds < 60) seconds.coerceAtLeast(0) else ((seconds + 59) / 60) * 60
 
     /**
      * "3 miles. Time, 27 minutes 42 seconds. Last mile pace, 9 minutes 5 seconds."

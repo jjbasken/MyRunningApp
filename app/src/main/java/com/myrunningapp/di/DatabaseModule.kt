@@ -8,6 +8,7 @@ import com.myrunningapp.data.db.dao.ProfileDao
 import com.myrunningapp.data.db.dao.RunDao
 import com.myrunningapp.data.db.dao.RunPointDao
 import com.myrunningapp.data.db.dao.SplitDao
+import com.myrunningapp.data.db.dao.TrainingPlanDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,7 +24,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS)
             .build()
 
@@ -41,4 +42,7 @@ object DatabaseModule {
 
     @Provides
     fun provideHealthSyncDao(db: AppDatabase): HealthSyncDao = db.healthSyncDao()
+
+    @Provides
+    fun provideTrainingPlanDao(db: AppDatabase): TrainingPlanDao = db.trainingPlanDao()
 }
