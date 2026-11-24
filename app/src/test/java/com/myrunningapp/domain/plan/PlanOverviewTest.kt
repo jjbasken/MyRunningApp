@@ -129,6 +129,27 @@ class PlanOverviewTest {
     }
 
     @Test
+    fun `runs missed before this week still stop the plan being called on track`() {
+        val o = overview(
+            listOf(
+                w(-20), w(-18), w(-16), w(-14), w(-12), w(-10), w(-9),
+                w(-4, status = WorkoutStatus.COMPLETED),
+                w(-2, status = WorkoutStatus.COMPLETED),
+                w(-1, status = WorkoutStatus.COMPLETED),
+            ),
+        )
+        assertTrue(o.tips.none { it is CoachTip.OnTrack || it is CoachTip.MissedRuns })
+        assertEquals(CoachTip.BehindPlan(completed = 3, due = 10), o.tips.last())
+    }
+
+    @Test
+    fun `an old miss or two still counts as on track`() {
+        val done = (1L..8L).map { w(-it - 1, status = WorkoutStatus.COMPLETED) }
+        val o = overview(done + w(-20) + w(-22))
+        assertEquals(CoachTip.OnTrack(completed = 8, due = 10), o.tips.last())
+    }
+
+    @Test
     fun `race week outranks everything`() {
         val o = overview(listOf(w(-2), w(3, WorkoutType.RACE)), raceDate = today.plusDays(3))
         assertEquals(CoachTip.RaceWeek(3), o.tips.first())

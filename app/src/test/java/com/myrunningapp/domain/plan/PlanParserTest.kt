@@ -273,5 +273,35 @@ class PlanParserTest {
         assertEquals(LocalDate.of(2026, 11, 24), plan.workouts.first().date)
         assertEquals(LocalDate.of(2027, 11, 14), plan.raceDate)
         assertEquals(Units.milesToMeters(13.1), plan.raceDistanceMeters!!, 0.01)
+        assertEquals("Half marathon plan", plan.name)
+    }
+
+    @Test
+    fun `the prompt names the race and tapers for its distance`() {
+        fun prompt(miles: Double) =
+            PlanPrompt.build(PlanRequest(raceDate = LocalDate.of(2027, 11, 14), raceDistanceMiles = miles), today)
+
+        val fiveK = prompt(3.1)
+        assertTrue("complete 5K training plan" in fiveK)
+        assertTrue("Taper over the final week." in fiveK)
+        assertEquals("5K plan", parse(fiveK).name)
+        assertEquals(Units.milesToMeters(3.1), parse(fiveK).raceDistanceMeters!!, 0.01)
+
+        assertTrue("Taper over the last 2 weeks." in prompt(13.1))
+
+        val marathon = prompt(26.2)
+        assertTrue("complete marathon training plan" in marathon)
+        assertTrue("Taper over the last 3 weeks." in marathon)
+
+        val custom = prompt(8.0)
+        assertTrue("complete 8-mile race training plan" in custom)
+        assertEquals(Units.milesToMeters(8.0), parse(custom).raceDistanceMeters!!, 0.01)
+    }
+
+    @Test
+    fun `race presets are recognised to a tenth of a mile`() {
+        assertEquals(RaceDistance.TEN_K, RaceDistance.of(6.2))
+        assertEquals(RaceDistance.MARATHON, RaceDistance.of(26.2))
+        assertNull(RaceDistance.of(8.0))
     }
 }

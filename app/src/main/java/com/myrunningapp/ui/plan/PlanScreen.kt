@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -41,6 +42,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +80,7 @@ import com.myrunningapp.domain.plan.ParsedPlan
 import com.myrunningapp.domain.plan.PlanImportFailure
 import com.myrunningapp.domain.plan.PlanOverview
 import com.myrunningapp.domain.plan.PlanRequest
+import com.myrunningapp.domain.plan.RaceDistance
 import com.myrunningapp.domain.plan.PlannedWorkout
 import com.myrunningapp.domain.plan.TrainingPlan
 import com.myrunningapp.domain.plan.WorkoutStatus
@@ -87,6 +90,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
+import java.util.Locale
 
 /** A plan file is a few hundred KB at most; anything past this is not a plan. */
 private const val MAX_PLAN_BYTES = 2L * 1024 * 1024
@@ -109,6 +113,7 @@ fun PlanScreen(onRunClick: (Long) -> Unit, viewModel: PlanViewModel = hiltViewMo
     val clipboardEmpty = stringResource(R.string.plan_clipboard_empty)
     val promptCopied = stringResource(R.string.plan_prompt_copied)
     val unreadable = stringResource(R.string.plan_import_unreadable)
+    val tooLarge = stringResource(R.string.plan_import_too_large)
 
     var showPrompt by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
@@ -136,6 +141,7 @@ fun PlanScreen(onRunClick: (Long) -> Unit, viewModel: PlanViewModel = hiltViewMo
                 )
                 is PlanViewModel.ImportEvent.Failed -> resources.importFailureMessage(event.failure, event.detail)
                 PlanViewModel.ImportEvent.Unreadable -> unreadable
+                PlanViewModel.ImportEvent.TooLarge -> tooLarge
             }
             snackbarHostState.showSnackbar(message)
         }
@@ -178,6 +184,7 @@ fun PlanScreen(onRunClick: (Long) -> Unit, viewModel: PlanViewModel = hiltViewMo
         PromptDialog(
             today = state.today.takeIf { it != LocalDate.MIN } ?: viewModel.today(),
             raceDate = state.plan?.raceDate,
+            raceDistanceMiles = state.plan?.raceDistanceMeters?.let(Units::metersToMiles),
             buildPrompt = viewModel::buildPrompt,
             onCopied = {
                 showPrompt = false
@@ -471,6 +478,7 @@ private fun tipText(tip: CoachTip): String = when (tip) {
     CoachTip.LongRunToday -> stringResource(R.string.coach_long_run_today)
     CoachTip.RestDay -> stringResource(R.string.coach_rest_day)
     is CoachTip.OnTrack -> stringResource(R.string.coach_on_track, tip.completed, tip.due)
+    is CoachTip.BehindPlan -> stringResource(R.string.coach_behind, tip.completed, tip.due)
     CoachTip.PlanFinished -> stringResource(R.string.coach_finished)
 }
 
@@ -674,12 +682,16 @@ private fun ReplaceOrMergeDialog(
 private fun PromptDialog(
     today: LocalDate,
     raceDate: LocalDate?,
+    raceDistanceMiles: Double?,
     buildPrompt: (PlanRequest) -> String,
     onCopied: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     var raceText by rememberSaveable { mutableStateOf((raceDate ?: today.plusYears(1)).toString()) }
+    var distanceText by rememberSaveable {
+        mutableStateOf(formatMilesField(raceDistanceMiles ?: RaceDistance.HALF_MARATHON.miles))
+    }
     var runsPerWeek by rememberSaveable { mutableStateOf("4") }
     var weeklyMiles by rememberSaveable { mutableStateOf("10") }
     var longestRun by rememberSaveable { mutableStateOf("3") }
@@ -690,12 +702,15 @@ private fun PromptDialog(
     } catch (e: DateTimeParseException) {
         null
     }
+    val distance = distanceText.trim().toDoubleOrNull()
+        ?.takeIf { it >= RaceDistance.MIN_MILES && it <= RaceDistance.MAX_MILES }
     val runs = runsPerWeek.trim().toIntOrNull()?.takeIf { it in 2..7 }
     val weekly = weeklyMiles.trim().toDoubleOrNull()?.takeIf { it >= 0.0 && it <= 150.0 }
     val longest = longestRun.trim().toDoubleOrNull()?.takeIf { it >= 0.0 && it <= 50.0 }
-    val request = if (race != null && runs != null && weekly != null && longest != null) {
+    val request = if (race != null && distance != null && runs != null && weekly != null && longest != null) {
         PlanRequest(
             raceDate = race,
+            raceDistanceMiles = distance,
             runsPerWeek = runs,
             currentWeeklyMiles = weekly,
             longestRecentRunMiles = longest,
@@ -718,6 +733,26 @@ private fun PromptDialog(
                     label = { Text(stringResource(R.string.plan_prompt_race_date)) },
                     isError = race == null,
                     supportingText = { Text(stringResource(R.string.plan_prompt_race_date_hint)) },
+                    singleLine = true,
+                )
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RaceDistance.entries.forEach { preset ->
+                        FilterChip(
+                            selected = distance?.let { RaceDistance.of(it) } == preset,
+                            onClick = { distanceText = formatMilesField(preset.miles) },
+                            label = { Text(stringResource(preset.labelRes)) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = distanceText,
+                    onValueChange = { distanceText = it },
+                    label = { Text(stringResource(R.string.plan_prompt_race_distance)) },
+                    isError = distance == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                 )
                 OutlinedTextField(
@@ -774,6 +809,18 @@ private fun PromptDialog(
 }
 
 // --- platform helpers ----------------------------------------------------------------
+
+private val RaceDistance.labelRes: Int
+    get() = when (this) {
+        RaceDistance.FIVE_K -> R.string.race_5k
+        RaceDistance.TEN_K -> R.string.race_10k
+        RaceDistance.HALF_MARATHON -> R.string.race_half_marathon
+        RaceDistance.MARATHON -> R.string.race_marathon
+    }
+
+/** 13.1 -> "13.1", 26.0 -> "26": what the miles field shows for a preset or a plan's race. */
+private fun formatMilesField(miles: Double): String =
+    String.format(Locale.US, "%.1f", miles).removeSuffix(".0")
 
 private fun Context.clipboardManager(): ClipboardManager? =
     getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager

@@ -512,6 +512,64 @@ class AppDatabaseTest {
         assertNull(orphaned.runDistanceMeters)
     }
 
+    /**
+     * A coached run cut short by a process death: [distanceMeters] is what its last
+     * checkpoint saved. Returns the workout as the next process sees it.
+     */
+    private suspend fun recoverCoachedRun(distanceMeters: Double): Pair<PlanWorkoutEntity, Long> {
+        db.close()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "coached-recovery-test.db"
+        context.deleteDatabase(name)
+        fun open() = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addCallback(AppDatabase.RECOVER_INTERRUPTED_RUNS).build()
+        try {
+            db = open()
+            val repository = RunRepository(db.runDao(), db.runPointDao(), db.splitDao(),
+                ProfileRepository(db.profileDao()), db.healthSyncDao(), mockk(relaxed = true))
+            val dao = db.trainingPlanDao()
+            val planId = dao.replacePlan(plan(), listOf(workout(LocalDate.of(2026, 12, 1))))
+            val workoutId = dao.observeWorkouts(planId).first().single().workout.id
+            val runId = repository.startRun(ActivityType.RUN, Instant.EPOCH, 70.0)
+            dao.linkRunInProgress(workoutId, runId)
+            val snapshot = RunSnapshot.idle(ActivityType.RUN).copy(
+                state = RunSessionState.TRACKING, startedAt = Instant.EPOCH,
+                distanceMeters = distanceMeters, movingDurationSec = 600,
+                elapsedDurationSec = 600, avgPaceSecPerMile = 600.0,
+            )
+            repository.checkpoint(runId, emptyList(), snapshot, Instant.ofEpochSecond(600))
+
+            // While the run is recording, nothing above the database sees it as done.
+            val midRun = dao.observeWorkouts(planId).first().single().toDomain()
+            assertEquals(WorkoutStatus.PLANNED, midRun.status)
+            assertNull(midRun.completedRunId)
+            assertNull(midRun.completedDistanceMeters)
+
+            db.close() // the process dies
+            db = open()
+            return db.trainingPlanDao().getWorkout(workoutId)!! to runId
+        } finally {
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun `a coached run cut short by a process death still completes its workout`() = runTest {
+        val (workout, runId) = recoverCoachedRun(distanceMeters = 3000.0)
+
+        assertEquals(WorkoutStatus.COMPLETED, workout.status)
+        assertEquals(runId, workout.completedRunId)
+    }
+
+    @Test
+    fun `a recovered coached run too short to count leaves the workout to do`() = runTest {
+        val (workout, _) = recoverCoachedRun(distanceMeters = 100.0)
+
+        assertEquals(WorkoutStatus.PLANNED, workout.status)
+        assertNull(workout.completedRunId)
+    }
+
     @Test
     fun `deleting the plan takes its workouts but leaves runs alone`() = runTest {
         val dao = db.trainingPlanDao()

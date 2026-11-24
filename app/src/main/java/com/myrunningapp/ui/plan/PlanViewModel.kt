@@ -3,6 +3,7 @@ package com.myrunningapp.ui.plan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.myrunningapp.data.export.GpxImportException
+import com.myrunningapp.data.export.GpxImportFailure
 import com.myrunningapp.data.plan.TrainingPlanRepository
 import com.myrunningapp.domain.plan.ParsedPlan
 import com.myrunningapp.domain.plan.PlanImportException
@@ -60,6 +61,8 @@ class PlanViewModel @Inject constructor(
         data class Failed(val failure: PlanImportFailure, val detail: String?) : ImportEvent
         /** The picked file could not be read at all. */
         data object Unreadable : ImportEvent
+        /** Past the plan size limit: most likely a full backup carrying every run's track. */
+        data object TooLarge : ImportEvent
     }
 
     /** Follows the date too, so a screen left open overnight moves on to the new day. */
@@ -112,7 +115,9 @@ class PlanViewModel @Inject constructor(
             } catch (e: PlanImportException) {
                 _importEvents.emit(ImportEvent.Failed(e.failure, e.detail))
             } catch (e: GpxImportException) {
-                _importEvents.emit(ImportEvent.Unreadable)
+                _importEvents.emit(
+                    if (e.failure == GpxImportFailure.TOO_LARGE) ImportEvent.TooLarge else ImportEvent.Unreadable,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

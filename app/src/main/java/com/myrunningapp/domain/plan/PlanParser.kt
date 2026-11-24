@@ -80,7 +80,8 @@ object PlanParser {
      * @throws PlanImportException when the text cannot become a plan.
      */
     fun parse(text: String, today: LocalDate): ParsedPlan {
-        val element = extractJson(text) ?: throw PlanImportException(PlanImportFailure.NOT_JSON)
+        val element = extractJson(text)?.let(::unwrapBackup)
+            ?: throw PlanImportException(PlanImportFailure.NOT_JSON)
         // A bare array of workouts is a plan too, just one with no name or dates.
         val root = element as? JsonObject
         val rawWorkouts = when (element) {
@@ -143,6 +144,16 @@ object PlanParser {
             if (element is JsonObject || element is JsonArray) return element
         }
         return null
+    }
+
+    /**
+     * The app's own full backup keeps the plan under `plan`, in this format; opening
+     * the backup file restores it. Anything else is read as it is.
+     */
+    private fun unwrapBackup(element: JsonElement): JsonElement {
+        val root = element as? JsonObject ?: return element
+        val plan = root["plan"] as? JsonObject ?: return element
+        return if (root["runs"] is JsonArray && plan["workouts"] is JsonArray) plan else element
     }
 
     private val FENCE = Regex("```(?:json|JSON)?\\s*([\\s\\S]*?)```")

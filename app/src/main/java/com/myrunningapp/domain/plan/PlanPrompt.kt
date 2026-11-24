@@ -5,6 +5,24 @@ import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
+/** The usual race distances, offered as one-tap choices in the prompt form. */
+enum class RaceDistance(val miles: Double) {
+    FIVE_K(3.1),
+    TEN_K(6.2),
+    HALF_MARATHON(13.1),
+    MARATHON(26.2),
+    ;
+
+    companion object {
+        /** The longest race the form accepts: [PlanParser] rejects longer single workouts. */
+        const val MAX_MILES = 60.0
+        const val MIN_MILES = 1.0
+
+        /** The preset [miles] is, to a tenth of a mile, or null for any other distance. */
+        fun of(miles: Double): RaceDistance? = entries.firstOrNull { kotlin.math.abs(it.miles - miles) < 0.05 }
+    }
+}
+
 /** What the runner tells the app before it writes a prompt for them. */
 data class PlanRequest(
     val raceDate: LocalDate,
@@ -33,11 +51,14 @@ object PlanPrompt {
         val weeks = ((request.raceDate.toEpochDay() - start.toEpochDay()) / 7 + 1)
             .coerceAtLeast(1)
         val distance = miles(request.raceDistanceMiles)
+        val race = raceName(request.raceDistanceMiles)
+        val taperWeeks = taperWeeks(request.raceDistanceMiles)
+        val taper = if (taperWeeks == 1) "the final week" else "the last $taperWeeks weeks"
         val notes = request.notes.trim().takeIf { it.isNotEmpty() }
             ?.let { "\n- Other notes: $it" }.orEmpty()
 
         return """
-You are an experienced running coach. Write me a complete $distance-mile race training plan.
+You are an experienced running coach. Write me a complete $race training plan.
 
 About me:
 - Race date: ${request.raceDate} (race distance $distance miles)
@@ -48,7 +69,7 @@ About me:
 Coaching guidelines:
 - Build weekly mileage gradually (no more than about 10% per week) with a lighter recovery week every 3–4 weeks.
 - Most runs should be easy. Include long runs, and tempo or interval sessions once I have a base.
-- Taper over the last 2 weeks. The final workout is the race itself on ${request.raceDate}, type "race".
+- Taper over $taper. The final workout is the race itself on ${request.raceDate}, type "race".
 - Give target paces in minutes per mile as a range, e.g. "10:30-11:00". Leave targetPace out if a run should be by feel.
 
 Output format — this is imported by an app, so follow it exactly:
@@ -59,7 +80,7 @@ Output format — this is imported by an app, so follow it exactly:
 - "type" is one of: "easy", "long", "tempo", "intervals", "recovery", "race".
 
 {
-  "name": "Half marathon plan",
+  "name": "${race.replaceFirstChar { it.uppercase() }} plan",
   "startDate": "$start",
   "raceDate": "${request.raceDate}",
   "raceDistanceMiles": $distance,
@@ -72,6 +93,22 @@ Output format — this is imported by an app, so follow it exactly:
 
 If the whole plan will not fit in one reply, stop at the end of a week and tell me; I will ask for the rest. Keep the same startDate and keep counting weeks from 1.
         """.trimIndent()
+    }
+
+    /** "half marathon", "5K", or "8-mile race" for a distance with no common name. */
+    internal fun raceName(miles: Double): String = when (RaceDistance.of(miles)) {
+        RaceDistance.FIVE_K -> "5K"
+        RaceDistance.TEN_K -> "10K"
+        RaceDistance.HALF_MARATHON -> "half marathon"
+        RaceDistance.MARATHON -> "marathon"
+        null -> "${miles(miles)}-mile race"
+    }
+
+    /** Longer races need longer to freshen up for: a week for a 10K or less, three for a marathon. */
+    internal fun taperWeeks(miles: Double): Int = when {
+        miles <= 6.3 -> 1
+        miles <= 13.2 -> 2
+        else -> 3
     }
 
     /** 13.1 -> "13.1", 4.0 -> "4". */

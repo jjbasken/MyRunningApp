@@ -18,6 +18,7 @@ import com.myrunningapp.data.db.entity.RunPointEntity
 import com.myrunningapp.data.db.entity.PlanWorkoutEntity
 import com.myrunningapp.data.db.entity.SplitEntity
 import com.myrunningapp.data.db.entity.TrainingPlanEntity
+import com.myrunningapp.domain.plan.WorkoutCoach
 
 @Database(
     entities = [
@@ -125,6 +126,24 @@ abstract class AppDatabase : RoomDatabase() {
          */
         val RECOVER_INTERRUPTED_RUNS = object : Callback() {
             override fun onOpen(db: SupportSQLiteDatabase) {
+                // Coached runs first, while isInProgress still marks which runs were
+                // cut short: a long enough one has done its workout (as finish would
+                // have recorded), and any other workout still holding a run in
+                // progress is let go, since after recovery no run is in progress.
+                // Re-running after a death part-way through is harmless.
+                db.execSQL(
+                    """
+                    UPDATE plan_workouts SET status = 'COMPLETED'
+                    WHERE status = 'PLANNED' AND completedRunId IN (
+                        SELECT id FROM runs
+                        WHERE isInProgress = 1 AND distanceMeters >= ${WorkoutCoach.MIN_COMPLETION_METERS}
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "UPDATE plan_workouts SET completedRunId = NULL " +
+                        "WHERE status = 'PLANNED' AND completedRunId IS NOT NULL",
+                )
                 db.execSQL(
                     """
                     UPDATE runs SET

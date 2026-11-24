@@ -532,9 +532,17 @@ class RunTrackerTest {
     // --- training-plan coaching -------------------------------------------------
 
     private class FakeWorkoutLog : WorkoutLog {
+        val started = mutableListOf<Pair<Long, Long>>()
         val recorded = mutableListOf<Pair<Long, Long>>()
+        val abandoned = mutableListOf<Pair<Long, Long>>()
+        override suspend fun startWorkoutRun(workoutId: Long, runId: Long) {
+            started += workoutId to runId
+        }
         override suspend fun recordWorkoutRun(workoutId: Long, runId: Long) {
             recorded += workoutId to runId
+        }
+        override suspend fun abandonWorkoutRun(workoutId: Long, runId: Long) {
+            abandoned += workoutId to runId
         }
     }
 
@@ -581,7 +589,17 @@ class RunTrackerTest {
         coachedTracker.finish()
 
         assertEquals(listOf(42L to 7L), workoutLog.recorded)
+        assertTrue(workoutLog.abandoned.isEmpty())
         assertNull(coachedTracker.activeWorkout.value)
+    }
+
+    @Test
+    fun `the workout is linked as soon as the run row exists, so a process death can credit it`() = runTest {
+        coachedTracker.start(ActivityType.RUN, countdownSeconds = 0, weightKg = 70.0, workout = oneMile())
+        runCoachedFor(seconds = 5)
+
+        assertEquals(listOf(42L to 7L), workoutLog.started)
+        assertTrue(workoutLog.recorded.isEmpty())
     }
 
     @Test
@@ -591,6 +609,8 @@ class RunTrackerTest {
         coachedTracker.finish()
 
         assertTrue(workoutLog.recorded.isEmpty())
+        // The link made at the start is let go, leaving the workout to do.
+        assertEquals(listOf(42L to 7L), workoutLog.abandoned)
     }
 
     @Test
@@ -611,6 +631,7 @@ class RunTrackerTest {
 
         assertNull(coachedTracker.activeWorkout.value)
         assertTrue(announcer.spoken.none { it is Announcement.WorkoutIntro })
+        assertTrue(workoutLog.started.isEmpty())
         assertTrue(workoutLog.recorded.isEmpty())
     }
 

@@ -117,8 +117,14 @@ class TrainingPlanRepository @Inject constructor(
 
     suspend fun resetWorkout(workoutId: Long) = dao.setStatus(workoutId, WorkoutStatus.PLANNED, null)
 
+    override suspend fun startWorkoutRun(workoutId: Long, runId: Long) =
+        dao.linkRunInProgress(workoutId, runId)
+
     override suspend fun recordWorkoutRun(workoutId: Long, runId: Long) =
         dao.setStatus(workoutId, WorkoutStatus.COMPLETED, runId)
+
+    override suspend fun abandonWorkoutRun(workoutId: Long, runId: Long) =
+        dao.unlinkRunInProgress(workoutId, runId)
 
     private fun com.myrunningapp.domain.plan.ParsedWorkout.toEntity() = PlanWorkoutEntity(
         planId = 0,

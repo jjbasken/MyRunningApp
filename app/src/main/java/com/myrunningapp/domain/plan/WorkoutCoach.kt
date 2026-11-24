@@ -116,6 +116,15 @@ class WorkoutCoach(val workout: PlannedWorkout) {
         fun coaches(workout: PlannedWorkout): Boolean =
             workout.type.isRun && workout.status == WorkoutStatus.PLANNED
 
+        /**
+         * A quarter mile: the least a coached run must cover to count as doing its
+         * workout. A false start or GPS drift has not, and ticking the workout off
+         * would drop it from the Track screen, so the real run that follows would
+         * go uncoached. Shared by the tracker and by the recovery of a run cut
+         * short by a process death.
+         */
+        const val MIN_COMPLETION_METERS = 400.0
+
         private const val RANGE_TOLERANCE_SEC = 5.0
         private const val SINGLE_PACE_TOLERANCE_SEC = 10.0
         /** About a tenth of a mile: less than that left and "to go" is noise before "complete". */

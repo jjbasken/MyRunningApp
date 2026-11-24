@@ -1,5 +1,6 @@
 package com.myrunningapp.data.export
 
+import com.myrunningapp.data.plan.TrainingPlanRepository
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.data.repository.RunRepository
 import kotlinx.coroutines.flow.first
@@ -25,6 +26,7 @@ data class ExportDocument(val fileName: String, val mimeType: String, val conten
 class RunExporter @Inject constructor(
     private val runRepository: RunRepository,
     private val profileRepository: ProfileRepository,
+    private val planRepository: TrainingPlanRepository,
 ) {
 
     /** One run as GPX, for handing to another running app. */
@@ -54,6 +56,7 @@ class RunExporter @Inject constructor(
             runs = runs,
             pointsByRun = runs.associate { it.id to runRepository.points(it.id).first() },
             splitsByRun = runs.associate { it.id to runRepository.splits(it.id).first() },
+            plan = planRepository.activePlan.first(),
         )
         ExportDocument(
             fileName = ExportFileNames.forBackup(exportedAt, zone),

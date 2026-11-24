@@ -167,12 +167,14 @@ class RunTracker @Inject constructor(
         val id = runId
         if (id != null) {
             recorder.finishRun(id, summary, endedAt)
-            // A false start or GPS drift has not done the workout. Ticking it off
-            // would also drop it from the Track screen, so the real run that
-            // follows would go uncoached; the runner can still mark it done by hand.
-            val workoutId = coach?.workout?.id
-            if (workoutId != null && summary.distanceMeters >= MIN_WORKOUT_METERS) {
-                workoutLog.recordWorkoutRun(workoutId, id)
+            // Too short a run leaves the workout to do (see MIN_COMPLETION_METERS);
+            // the runner can still mark it done by hand.
+            coach?.workout?.id?.let { workoutId ->
+                if (summary.distanceMeters >= WorkoutCoach.MIN_COMPLETION_METERS) {
+                    workoutLog.recordWorkoutRun(workoutId, id)
+                } else {
+                    workoutLog.abandonWorkoutRun(workoutId, id)
+                }
             }
             _lastFinishedRunId.value = id
         }
@@ -245,8 +247,12 @@ class RunTracker @Inject constructor(
     private suspend fun openRunRow(live: RunSession) {
         if (runId != null) return
         val startedAt = live.snapshot.startedAt ?: clock.instant()
-        runId = recorder.startRun(live.activityType, startedAt, weightKg)
+        val id = recorder.startRun(live.activityType, startedAt, weightKg)
+        runId = id
         lastFlushElapsedMillis = monotonicClock.elapsedRealtimeMillis()
+        // Written now rather than only at finish, so a run cut short by a process
+        // death is still credited to its workout when the database next opens.
+        coach?.workout?.id?.let { workoutLog.startWorkoutRun(it, id) }
     }
 
     private suspend fun flush(force: Boolean) {
@@ -284,8 +290,5 @@ class RunTracker @Inject constructor(
         const val MAX_BUFFERED_POINTS = 20
         /** The design's "3, 2, 1, go" — earlier seconds would just be nagging. */
         const val COUNTDOWN_CUE_FROM = 3
-
-        /** A quarter mile: the least a run must cover to count as doing its workout. */
-        const val MIN_WORKOUT_METERS = 400.0
     }
 }

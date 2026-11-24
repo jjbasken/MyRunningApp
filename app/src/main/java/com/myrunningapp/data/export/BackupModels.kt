@@ -17,11 +17,51 @@ data class Backup(
     val exportedAt: String,
     val profile: BackupProfile,
     val runs: List<BackupRun>,
+    /** The training plan in use, if any. Added in version 2. */
+    val plan: BackupPlan? = null,
 ) {
     companion object {
-        const val CURRENT_VERSION = 1
+        /** 2: adds [plan]. */
+        const val CURRENT_VERSION = 2
     }
 }
+
+/**
+ * The training plan, in the shape [com.myrunningapp.domain.plan.PlanParser]
+ * imports: every workout has an explicit `date`, so this object (or the whole
+ * backup file, which the parser looks inside) can be opened from the Plan tab to
+ * restore the plan. A restore brings back the workouts, not their status: done
+ * and skipped are recorded here for the reader, and [BackupWorkout.completedRunId]
+ * points at a run in the same file.
+ */
+@Serializable
+data class BackupPlan(
+    val name: String,
+    val raceDate: String?,
+    val raceDistanceMeters: Double?,
+    val importedAt: String,
+    val workouts: List<BackupWorkout>,
+)
+
+@Serializable
+data class BackupWorkout(
+    /** YYYY-MM-DD, a calendar day with no time zone. */
+    val date: String,
+    /** easy, long, tempo, intervals, recovery, race, cross_train, rest or other. */
+    val type: String,
+    val title: String,
+    val description: String,
+    val distanceMeters: Double?,
+    val durationSeconds: Long?,
+    /** "9:15-9:45" per mile, for the importer and for a human reading the file. */
+    val targetPace: String?,
+    /** The exact pace range, which [targetPace] rounds to whole seconds. */
+    val paceFastSecPerMile: Double?,
+    val paceSlowSecPerMile: Double?,
+    /** planned, completed or skipped. */
+    val status: String,
+    val completedRunId: Long?,
+)
 
 @Serializable
 data class BackupProfile(

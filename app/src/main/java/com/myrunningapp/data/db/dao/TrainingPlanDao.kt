@@ -50,6 +50,21 @@ interface TrainingPlanDao {
     suspend fun setStatus(workoutId: Long, status: WorkoutStatus, runId: Long?)
 
     /**
+     * Marks a still-planned workout as being done by [runId], a run in progress.
+     * PLANNED with a run attached means exactly that, and only that; see
+     * [PlanWorkoutEntity.toDomain].
+     */
+    @Query("UPDATE plan_workouts SET completedRunId = :runId WHERE id = :workoutId AND status = 'PLANNED'")
+    suspend fun linkRunInProgress(workoutId: Long, runId: Long)
+
+    /** Undoes [linkRunInProgress], unless the workout has since been settled some other way. */
+    @Query(
+        "UPDATE plan_workouts SET completedRunId = NULL " +
+            "WHERE id = :workoutId AND completedRunId = :runId AND status = 'PLANNED'",
+    )
+    suspend fun unlinkRunInProgress(workoutId: Long, runId: Long)
+
+    /**
      * Clears not-yet-done workouts on [epochDays], so a merged-in chunk replaces
      * them. Days rather than [LocalDate]s: the `date` column stores epoch days.
      */

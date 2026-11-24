@@ -296,8 +296,10 @@ The app does not call an AI service. It writes a prompt, you paste it into the
 assistant of your choice, and you paste the reply back. Your runs never leave
 the phone, and the plan is plain JSON you can read and edit.
 
-1. **Plan → Write AI prompt.** Enter the race date, how many days a week you
-   can run, and where your running is now. **Copy prompt**, or **Share to an
+1. **Plan → Write AI prompt.** Enter the race date and distance (5K, 10K, half,
+   marathon, or any distance in miles), how many days a week you can run, and
+   where your running is now. The prompt names the race and asks for a taper to
+   suit it: one week for a 10K or less, two for a half, three for a marathon. **Copy prompt**, or **Share to an
    app** to send it straight to a chat app.
 2. Send it to the assistant. A year-long plan is long; if the reply stops partway
    (the prompt asks it to stop at the end of a week), ask for the rest.
@@ -349,11 +351,14 @@ the phone, and the plan is plain JSON you can read and edit.
   recoveries. Easy and recovery runs are never told off for being slow.
 - **After the run:** the workout is marked done and linked to the run, so its
   detail shows what you actually ran. A run under a quarter mile (a false
-  start) leaves it to do. Workouts can also be marked done or
+  start) leaves it to do. If the app is killed mid-run, the salvaged run still
+  ticks its workout off when the app next opens, provided it got that far. Workouts can also be marked done or
   skipped by hand. Deleting a run keeps the workout done.
 - **Between runs:** the Plan tab's coach card covers race week, the taper,
   missed runs ("don't double up"), easy runs drifting too fast, long-run days,
-  and how many of the runs due so far are done.
+  and how many of the runs due so far are done. It only says "on track" once
+  four in five of them are; older misses count toward that even after they stop
+  being called out.
 
 ### Checking it on a device
 
@@ -367,5 +372,12 @@ the phone, and the plan is plain JSON you can read and edit.
 - Import a second chunk with **Add to current plan** and check that finished
   workouts survive.
 
-Plans are not included in the JSON backup export yet.
+### Backup
+
+**Export all data** includes the plan (format version 2), with each workout's
+status and the run that did it. The plan section is in the import format, so
+opening a backup file from the Plan tab restores the plan, though not which
+workouts were done. A backup that carries a lot of GPS tracks is over the plan
+import size limit. Copy its `"plan"` object into a file of its own and open
+that instead.
 

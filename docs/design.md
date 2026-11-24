@@ -359,6 +359,16 @@ Each milestone builds, runs, and is testable on its own.
    except on race day. The Plan tab's coach card comes from `PlanOverview.of`,
    also pure, which ranks race week and taper above missed runs, missed runs
    above pace drift, and stays quiet about deliberately skipped workouts.
+   *Surviving a process death:* the tracker links the workout to its run the
+   moment the run row exists, as `status = PLANNED` with `completedRunId` set,
+   which means "a run in progress" and nothing else (`toDomain` hides it).
+   `RECOVER_INTERRUPTED_RUNS` then settles it on the next open, before it
+   clears `isInProgress`. The run is completed if the salvaged run passed
+   `WorkoutCoach.MIN_COMPLETION_METERS`, otherwise the link is released. This
+   needed no schema change. The coaching itself does not resume, because the run
+   does not: a salvaged run is a finished run. The full backup (version 2)
+   carries the plan in `PlanParser`'s own format, and the parser looks inside
+   a backup file for it.
 
 ## Verification
 

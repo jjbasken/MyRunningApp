@@ -172,6 +172,7 @@
     <string name="plan_menu">Plan options</string>
     <string name="plan_clipboard_empty">Nothing to paste. Copy the assistant\'s reply first.</string>
     <string name="plan_import_unreadable">That file could not be read.</string>
+    <string name="plan_import_too_large">That file is too big to be a plan. To restore the plan from a full backup, copy its \"plan\" section into a file of its own and open that.</string>
     <string name="plan_import_not_json">That doesn\'t look like a plan. Copy the assistant\'s whole reply, including the JSON.</string>
     <string name="plan_import_no_workouts">The plan has no workouts in it.</string>
     <string name="plan_import_bad_date">A workout is missing its date, or its week and day.</string>
@@ -233,6 +234,11 @@
     <string name="plan_prompt_body">The more the assistant knows, the better the plan fits you.</string>
     <string name="plan_prompt_race_date">Race date</string>
     <string name="plan_prompt_race_date_hint">YYYY-MM-DD</string>
+    <string name="plan_prompt_race_distance">Race distance (mi)</string>
+    <string name="race_5k">5K</string>
+    <string name="race_10k">10K</string>
+    <string name="race_half_marathon">Half</string>
+    <string name="race_marathon">Marathon</string>
     <string name="plan_prompt_runs_per_week">Runs per week (2–7)</string>
     <string name="plan_prompt_weekly_miles">Miles per week now</string>
     <string name="plan_prompt_longest_run">Longest recent run (mi)</string>
@@ -256,6 +262,7 @@
     <string name="coach_easy_too_fast">Your easy runs have been well ahead of their target pace. Slowing down builds endurance with less risk of injury, and keeps your legs fresh for the hard days.</string>
     <string name="coach_long_run_today">Long run today. Start slower than feels natural, and bring water if you\'ll be out over an hour.</string>
     <string name="coach_rest_day">Rest day. Recovery is when your body adapts to the training.</string>
+    <string name="coach_behind">%1$d of %2$d runs done so far. Don\'t try to make up the old ones: follow the plan from this week, and if it keeps slipping, ask your assistant to rebuild it from where you are now.</string>
     <string name="coach_on_track">On track: %1$d of %2$d runs done so far. Keep it up.</string>
     <string name="coach_finished">Race day has passed. Congratulations! Import a new plan when you\'re ready for the next one.</string>
 </resources>
