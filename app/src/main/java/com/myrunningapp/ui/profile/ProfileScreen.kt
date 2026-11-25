@@ -2,6 +2,8 @@ package com.myrunningapp.ui.profile
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +60,7 @@ import com.myrunningapp.domain.model.Sex
 import com.myrunningapp.ui.export.DocumentExportEffect
 import com.myrunningapp.ui.health.HealthSyncSection
 import com.myrunningapp.ui.theme.MyRunningTheme
+import com.myrunningapp.ui.update.UpdateSection
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -76,15 +79,26 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
     // Re-read on every resume: a trip to Health Connect's own settings changes
     // permission state without ever calling back into a launcher.
     LifecycleResumeEffect(Unit) {
-        viewModel.refreshHealthState()
+        viewModel.onScreenResumed()
         onPauseOrDispose { }
     }
+
+    val allowInstallsMessage = stringResource(R.string.update_needs_permission)
 
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
             val message = when (event) {
+                is ProfileViewModel.ProfileEvent.LaunchInstaller -> {
+                    runCatching { context.startActivity(event.intent) }
+                        .onFailure { e -> Log.w("ProfileScreen", "Could not open the installer", e) }
+                    return@collectLatest
+                }
                 is ProfileViewModel.ProfileEvent.Saved -> savedMessage
                 is ProfileViewModel.ProfileEvent.ValidationError -> event.message
+                is ProfileViewModel.ProfileEvent.AllowInstalls -> {
+                    openInstallPermissionSettings(context)
+                    allowInstallsMessage
+                }
             }
             scope.launch { snackbarHostState.showSnackbar(message) }
         }
@@ -132,7 +146,21 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         },
         onHealthSyncNow = viewModel::syncNow,
         onOpenHealthConnect = { openHealthConnectSettings(context) },
+        onUpdateAutoCheckChange = viewModel::setUpdateChecksEnabled,
+        onUpdateCheckNow = { viewModel.checkForUpdate() },
+        onUpdateInstall = viewModel::installUpdate,
+        onUpdateConfirm = viewModel::confirmInstall,
+        onUpdateStartOver = viewModel::installUpdate,
     )
+}
+
+/** Android's per-app "Install unknown apps" switch, which a self-update needs once. */
+private fun openInstallPermissionSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")),
+        )
+    }.onFailure { e -> Log.w("ProfileScreen", "Could not open install-permission settings", e) }
 }
 
 /**
@@ -161,6 +189,11 @@ private fun ProfileContent(
     onHealthRequestPermission: () -> Unit,
     onHealthSyncNow: () -> Unit,
     onOpenHealthConnect: () -> Unit,
+    onUpdateAutoCheckChange: (Boolean) -> Unit,
+    onUpdateCheckNow: () -> Unit,
+    onUpdateInstall: () -> Unit,
+    onUpdateConfirm: () -> Unit,
+    onUpdateStartOver: () -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.profile_title)) }) },
@@ -284,6 +317,15 @@ private fun ProfileContent(
                 onOpenHealthConnect = onOpenHealthConnect,
             )
 
+            UpdateSection(
+                section = state.update,
+                onAutoCheckChange = onUpdateAutoCheckChange,
+                onCheckNow = onUpdateCheckNow,
+                onInstall = onUpdateInstall,
+                onConfirmInstall = onUpdateConfirm,
+                onStartOver = onUpdateStartOver,
+            )
+
             Spacer(Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(Modifier.height(16.dp))
@@ -368,6 +410,11 @@ private fun ProfileContentPreview() {
             onHealthRequestPermission = {},
             onHealthSyncNow = {},
             onOpenHealthConnect = {},
+            onUpdateAutoCheckChange = {},
+            onUpdateCheckNow = {},
+            onUpdateInstall = {},
+            onUpdateConfirm = {},
+            onUpdateStartOver = {},
         )
     }
 }

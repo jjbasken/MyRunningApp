@@ -265,4 +265,30 @@
     <string name="coach_behind">%1$d of %2$d runs done so far. Don\'t try to make up the old ones: follow the plan from this week, and if it keeps slipping, ask your assistant to rebuild it from where you are now.</string>
     <string name="coach_on_track">On track: %1$d of %2$d runs done so far. Keep it up.</string>
     <string name="coach_finished">Race day has passed. Congratulations! Import a new plan when you\'re ready for the next one.</string>
+
+    <!-- App updates -->
+    <string name="update_title">App updates</string>
+    <string name="update_auto_toggle">Check for updates daily</string>
+    <string name="update_explainer">Asks GitHub, where releases are published, whether a newer version exists. GitHub sees your IP address; nothing else is sent.</string>
+    <string name="update_current_version">Installed: %1$s</string>
+    <string name="update_check_now">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_up_to_date">You have the latest version</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_install">Download and install</string>
+    <string name="update_release_notes">Release notes</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_installing">Installing — confirm in the system dialog if asked</string>
+    <string name="update_blocked_by_run">Finish your activity first: installing restarts the app.</string>
+    <string name="update_needs_permission">Allow this app to install updates on the next screen, then come back. The install carries on from there.</string>
+    <string name="update_awaiting_confirmation">Android needs you to confirm the install</string>
+    <string name="update_finish_install">Finish installing</string>
+    <string name="update_start_over">Start over</string>
+    <string name="update_notifications_off">Notifications are off for this app, so new versions will only show here.</string>
+    <string name="update_unsupported">Updates install only over release builds. This is a debug build.</string>
+    <string name="update_try_again">Try again</string>
+    <string name="update_channel">App updates</string>
+    <string name="update_channel_description">Tells you when a new version has been released</string>
+    <string name="update_notification_title">MyRunningApp %1$s is available</string>
+    <string name="update_notification_text">Tap to install it from Profile.</string>
 </resources>

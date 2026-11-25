@@ -6,6 +6,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -26,8 +27,11 @@ import com.myrunningapp.ui.profile.ProfileScreen
 import com.myrunningapp.ui.track.TrackScreen
 
 @Composable
-fun MainScreen() {
+fun MainScreen(openProfile: Boolean = false) {
     val navController = rememberNavController()
+    LaunchedEffect(openProfile) {
+        if (openProfile) navController.navigate(Routes.PROFILE) { launchSingleTop = true }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 

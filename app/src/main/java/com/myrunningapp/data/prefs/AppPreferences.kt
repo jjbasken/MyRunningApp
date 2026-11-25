@@ -24,6 +24,13 @@ data class AppPreferences(
      * the app must link into Health Connect's settings instead.
      */
     val healthPermissionAsked: Boolean = false,
+    /**
+     * Daily background check of GitHub Releases. Opt-in, like Health Connect:
+     * it is the one request the app makes that the user didn't just tap for.
+     */
+    val updateChecksEnabled: Boolean = false,
+    /** Flow state: the release tag last notified about, so each one notifies once. */
+    val lastNotifiedUpdate: String? = null,
 ) {
     companion object {
         val DEFAULT = AppPreferences()
