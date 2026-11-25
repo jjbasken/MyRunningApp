@@ -17,10 +17,11 @@ class ReleaseParserTest {
         size: Long = 2_701_555,
         draft: Boolean = false,
         prerelease: Boolean = false,
+        pageUrl: String = "https://github.com/jjbasken/MyRunningApp/releases/tag/$tag",
     ) = """
         {
           "tag_name": "$tag",
-          "html_url": "https://github.com/jjbasken/MyRunningApp/releases/tag/$tag",
+          "html_url": "$pageUrl",
           "draft": $draft,
           "prerelease": $prerelease,
           "body": "notes",
@@ -74,6 +75,22 @@ class ReleaseParserTest {
         assertNull(ReleaseParser.parse(release(tag = "nightly")))
         assertNull(ReleaseParser.parse("{not json"))
         assertNull(ReleaseParser.parse("""{"message":"Not Found"}"""))
+    }
+
+    @Test
+    fun `accepts only plain vX_Y_Z tags`() {
+        assertNull(ReleaseParser.parse(release(tag = "v0.4.0-rc1")))
+        assertNull(ReleaseParser.parse(release(tag = "0.4.0")))
+        assertNull(ReleaseParser.parse(release(tag = "v0.4")))
+    }
+
+    @Test
+    fun `drops a release-notes link that leaves the repository`() {
+        assertEquals(
+            "https://github.com/jjbasken/MyRunningApp/releases/tag/v0.4.0",
+            ReleaseParser.parse(release())!!.pageUrl,
+        )
+        assertNull(ReleaseParser.parse(release(pageUrl = "https://evil.example/notes"))!!.pageUrl)
     }
 
     @Test

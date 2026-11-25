@@ -79,7 +79,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
     // Re-read on every resume: a trip to Health Connect's own settings changes
     // permission state without ever calling back into a launcher.
     LifecycleResumeEffect(Unit) {
-        viewModel.refreshHealthState()
+        viewModel.onScreenResumed()
         onPauseOrDispose { }
     }
 
@@ -88,6 +88,11 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
             val message = when (event) {
+                is ProfileViewModel.ProfileEvent.LaunchInstaller -> {
+                    runCatching { context.startActivity(event.intent) }
+                        .onFailure { e -> Log.w("ProfileScreen", "Could not open the installer", e) }
+                    return@collectLatest
+                }
                 is ProfileViewModel.ProfileEvent.Saved -> savedMessage
                 is ProfileViewModel.ProfileEvent.ValidationError -> event.message
                 is ProfileViewModel.ProfileEvent.AllowInstalls -> {
@@ -144,6 +149,8 @@ fun ProfileScreen(viewModel: ProfileViewModel = hiltViewModel()) {
         onUpdateAutoCheckChange = viewModel::setUpdateChecksEnabled,
         onUpdateCheckNow = { viewModel.checkForUpdate() },
         onUpdateInstall = viewModel::installUpdate,
+        onUpdateConfirm = viewModel::confirmInstall,
+        onUpdateStartOver = viewModel::installUpdate,
     )
 }
 
@@ -185,6 +192,8 @@ private fun ProfileContent(
     onUpdateAutoCheckChange: (Boolean) -> Unit,
     onUpdateCheckNow: () -> Unit,
     onUpdateInstall: () -> Unit,
+    onUpdateConfirm: () -> Unit,
+    onUpdateStartOver: () -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.profile_title)) }) },
@@ -313,6 +322,8 @@ private fun ProfileContent(
                 onAutoCheckChange = onUpdateAutoCheckChange,
                 onCheckNow = onUpdateCheckNow,
                 onInstall = onUpdateInstall,
+                onConfirmInstall = onUpdateConfirm,
+                onStartOver = onUpdateStartOver,
             )
 
             Spacer(Modifier.height(24.dp))
@@ -402,6 +413,8 @@ private fun ProfileContentPreview() {
             onUpdateAutoCheckChange = {},
             onUpdateCheckNow = {},
             onUpdateInstall = {},
+            onUpdateConfirm = {},
+            onUpdateStartOver = {},
         )
     }
 }

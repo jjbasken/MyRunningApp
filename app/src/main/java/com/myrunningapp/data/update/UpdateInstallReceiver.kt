@@ -46,12 +46,12 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 updateManager.onInstallResult(PackageInstaller.STATUS_FAILURE, "The installer gave no confirmation screen")
                 return
             }
+            // Recorded first, so the screen can offer the dialog itself if
+            // Android blocks this start because the app is in the background.
+            updateManager.onConfirmationNeeded(confirm)
             runCatching {
-                context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }.onFailure { e ->
-                Log.w(TAG, "Could not open the install confirmation", e)
-                updateManager.onInstallResult(PackageInstaller.STATUS_FAILURE, "Couldn't open the installer")
-            }
+                context.startActivity(Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { e -> Log.w(TAG, "Could not open the install confirmation", e) }
             return
         }
         updateManager.onInstallResult(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))

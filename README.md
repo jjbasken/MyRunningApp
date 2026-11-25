@@ -110,8 +110,14 @@ Release builds can update themselves from this repository's
 - The first install needs **Install unknown apps** allowed for this app (the
   app opens that settings screen) and a confirmation dialog. On Android 12 and
   later, updates after that one can go through without the dialog.
+- If you leave the app while it downloads, Android won't let it pop the
+  confirmation dialog from the background; **Finish installing** opens it, and
+  **Start over** downloads afresh if an install ever gets stuck.
 - Installing restarts the app, so it is disabled while an activity is being
-  recorded. Nothing installs in the background: the daily check only notifies.
+  recorded, and an activity started mid-download postpones the install.
+  Nothing installs in the background: the daily check only notifies.
+- Each release must raise `versionCode` as well as `versionName`; otherwise the
+  app offers the release but refuses the downloaded APK as not newer.
 
 Debug builds (`com.myrunningapp.debug`, debug-signed) can't take a release APK,
 so the section only says so. To release an update: bump `versionCode` and

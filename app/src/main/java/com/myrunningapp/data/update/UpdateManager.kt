@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.pm.PackageInfoCompat
 import com.myrunningapp.BuildConfig
+import com.myrunningapp.data.location.RunTracker
 import com.myrunningapp.domain.update.AppVersion
 import com.myrunningapp.domain.update.DigestingCopy
 import com.myrunningapp.domain.update.ReleaseInfo
@@ -15,7 +16,9 @@ import com.myrunningapp.domain.update.ReleaseParser
 import com.myrunningapp.domain.update.UpdateCheckResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -41,12 +44,14 @@ import javax.inject.Singleton
  * request ever made is to GitHub, and it carries no identifier beyond the
  * package name in the User-Agent GitHub's API requires.
  *
- * Installing replaces the running app, which kills its process. Callers keep
- * that away from a run in progress; see `ProfileViewModel.installUpdate`.
+ * Installing replaces the running app, which kills its process, so the run
+ * check happens here, immediately before the session is committed — a
+ * download takes long enough for a run to start in the meantime.
  */
 @Singleton
 class UpdateManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val runTracker: RunTracker,
 ) {
 
     private val _state = MutableStateFlow<UpdateState>(
@@ -60,16 +65,27 @@ class UpdateManager @Inject constructor(
      * Downloads outlive the screen that started them: leaving Profile halfway
      * through a download shouldn't cancel it.
      */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            // The updater is never worth crashing the app over.
+            CoroutineExceptionHandler { _, e -> Log.e(TAG, "Updater coroutine failed", e) },
+    )
+
+    private var installJob: Job? = null
 
     /** [check], from a tap. */
     fun checkInBackground() {
         scope.launch { check() }
     }
 
-    /** [downloadAndInstall], from a tap. */
+    /**
+     * [downloadAndInstall], from a tap. A second tap while one is downloading
+     * is ignored rather than queued behind it as a duplicate install.
+     */
+    @Synchronized
     fun installInBackground(release: ReleaseInfo) {
-        scope.launch { downloadAndInstall(release) }
+        if (installJob?.isActive == true) return
+        installJob = scope.launch { downloadAndInstall(release) }
     }
 
     /** Whether Android will let this app open its installer, or the user must allow it first. */
@@ -80,14 +96,19 @@ class UpdateManager @Inject constructor(
         if (!SUPPORTED) return UpdateCheckResult.Failed("Updates are only available in release builds")
         return mutex.withLock {
             // Don't clobber a download or install that is already under way.
-            val busy = _state.value is UpdateState.Downloading || _state.value is UpdateState.Installing
+            val busy = _state.value.let {
+                it is UpdateState.Downloading || it is UpdateState.Installing || it is UpdateState.AwaitingConfirmation
+            }
             if (!busy) _state.value = UpdateState.Checking
             val result = try {
                 val body = withContext(Dispatchers.IO) { fetchLatestRelease() }
                 UpdateCheckResult.compare(AppVersion.parse(BuildConfig.VERSION_NAME), ReleaseParser.parse(body))
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: IOException) {
+            } catch (e: RateLimitedException) {
+                Log.w(TAG, "Update check rate-limited", e)
+                UpdateCheckResult.Failed("GitHub is limiting requests from your network. Try again in an hour.")
+            } catch (e: Exception) {
                 Log.w(TAG, "Update check failed", e)
                 UpdateCheckResult.Failed("Couldn't reach GitHub. Check your connection.")
             }
@@ -110,6 +131,14 @@ class UpdateManager @Inject constructor(
             try {
                 val apk = withContext(Dispatchers.IO) { download(release) }
                 withContext(Dispatchers.IO) { checkArchive(apk, release) }
+                if (runTracker.snapshot.value.isActive) {
+                    cleanDownloads()
+                    _state.value = UpdateState.Failed(
+                        "Update postponed: an activity started during the download. Install it after you finish.",
+                        release,
+                    )
+                    return
+                }
                 _state.value = UpdateState.Installing(release)
                 withContext(Dispatchers.IO) { install(apk) }
             } catch (e: CancellationException) {
@@ -122,22 +151,15 @@ class UpdateManager @Inject constructor(
         }
     }
 
-    /** Called by [UpdateInstallReceiver] with the installer's verdict. */
+    /** Called by [UpdateInstallReceiver] when Android wants the user to confirm. */
+    internal fun onConfirmationNeeded(confirmIntent: Intent) {
+        val release = _state.value.installableRelease ?: return
+        _state.value = UpdateState.AwaitingConfirmation(release, confirmIntent)
+    }
+
+    /** Called by [UpdateInstallReceiver] with the installer's final verdict. */
     internal fun onInstallResult(status: Int, message: String?) {
-        val release = (_state.value as? UpdateState.Installing)?.release
-        _state.value = when (status) {
-            PackageInstaller.STATUS_SUCCESS -> UpdateState.UpToDate
-            // The user backed out of the system dialog: offer the same update again.
-            PackageInstaller.STATUS_FAILURE_ABORTED ->
-                release?.let { UpdateState.Available(it) } ?: UpdateState.Idle
-            PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-                UpdateState.Failed(
-                    "This update is signed differently from the installed app. Install it manually from GitHub.",
-                    release,
-                )
-            PackageInstaller.STATUS_FAILURE_STORAGE -> UpdateState.Failed("Not enough storage to install the update", release)
-            else -> UpdateState.Failed(message ?: "The installer refused the update", release)
-        }
+        _state.value = UpdateState.afterInstall(status, message, _state.value.installableRelease)
         cleanDownloads()
     }
 
@@ -151,6 +173,9 @@ class UpdateManager @Inject constructor(
         }
         try {
             val code = connection.responseCode
+            // Unauthenticated API calls are limited to 60 an hour per IP address,
+            // which a shared network can exhaust.
+            if (code == HttpURLConnection.HTTP_FORBIDDEN || code == 429) throw RateLimitedException(code)
             if (code != HttpURLConnection.HTTP_OK) throw IOException("GitHub answered HTTP $code")
             return connection.inputStream.use { stream ->
                 val bytes = stream.readNBytesCompat(MAX_RELEASE_JSON_BYTES)
@@ -165,7 +190,8 @@ class UpdateManager @Inject constructor(
         if (release.sizeBytes > MAX_APK_BYTES) throw IOException("The update is unexpectedly large")
         cleanDownloads()
         val dir = File(context.cacheDir, DOWNLOAD_DIR).apply { mkdirs() }
-        val target = File(dir, "MyRunningApp-${release.tag}.apk")
+        // A fixed name: nothing from the network goes into a path.
+        val target = File(dir, "update.apk")
 
         // GitHub redirects release downloads to its asset CDN, HTTPS to HTTPS,
         // which HttpURLConnection follows on its own. The host serving the bytes
@@ -228,6 +254,9 @@ class UpdateManager @Inject constructor(
                 setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
         }
+        // A retry after a stuck confirmation starts over; drop the old sessions
+        // so they don't pile up holding a copy of the APK each.
+        installer.mySessions.forEach { runCatching { installer.abandonSession(it.sessionId) } }
         val sessionId = installer.createSession(params)
         try {
             installer.openSession(sessionId).use { session ->
@@ -247,6 +276,8 @@ class UpdateManager @Inject constructor(
                 )
                 session.commit(callback.intentSender)
             }
+            // The session holds its own copy now.
+            apk.delete()
         } catch (e: Exception) {
             runCatching { installer.abandonSession(sessionId) }
             throw e
@@ -268,6 +299,8 @@ class UpdateManager @Inject constructor(
         }
         return out.toByteArray()
     }
+
+    private class RateLimitedException(code: Int) : IOException("GitHub answered HTTP $code")
 
     companion object {
         private const val TAG = "UpdateManager"

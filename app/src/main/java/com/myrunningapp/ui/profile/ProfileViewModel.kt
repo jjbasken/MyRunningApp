@@ -1,5 +1,6 @@
 package com.myrunningapp.ui.profile
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.myrunningapp.data.db.dao.HealthSyncDao
@@ -229,22 +230,38 @@ class ProfileViewModel @Inject constructor(
      */
     fun installUpdate() {
         if (runTracker.snapshot.value.isActive) return
-        val release = when (val state = updateManager.state.value) {
-            is UpdateState.Available -> state.release
-            is UpdateState.Failed -> state.release
-            else -> null
-        } ?: return
+        val release = updateManager.state.value.installableRelease ?: return
         if (!updateManager.canRequestInstalls()) {
+            installAfterPermission = true
             _events.tryEmit(ProfileEvent.AllowInstalls)
             return
         }
+        installAfterPermission = false
         updateManager.installInBackground(release)
+    }
+
+    /** Re-opens Android's confirmation dialog, in case it was blocked or dismissed with Home. */
+    fun confirmInstall() {
+        if (runTracker.snapshot.value.isActive) return
+        val state = updateManager.state.value as? UpdateState.AwaitingConfirmation ?: return
+        _events.tryEmit(ProfileEvent.LaunchInstaller(state.confirmIntent))
+    }
+
+    /** Set when the user was sent to allow installs, so coming back carries on. */
+    private var installAfterPermission = false
+
+    /** Called on every resume of the Profile screen. */
+    fun onScreenResumed() {
+        refreshHealthState()
+        if (installAfterPermission && updateManager.canRequestInstalls()) installUpdate()
     }
 
     sealed interface ProfileEvent {
         data object Saved : ProfileEvent
         /** Send the user to "Install unknown apps" for this app. */
         data object AllowInstalls : ProfileEvent
+        /** Start the system install confirmation, from the activity. */
+        data class LaunchInstaller(val intent: Intent) : ProfileEvent
         data class ValidationError(val message: String) : ProfileEvent
     }
 }

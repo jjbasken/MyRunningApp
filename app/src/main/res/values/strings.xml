@@ -280,7 +280,11 @@
     <string name="update_downloading">Downloading… %1$d%%</string>
     <string name="update_installing">Installing — confirm in the system dialog if asked</string>
     <string name="update_blocked_by_run">Finish your activity first: installing restarts the app.</string>
-    <string name="update_needs_permission">Allow this app to install updates in the next screen, then come back and tap install again.</string>
+    <string name="update_needs_permission">Allow this app to install updates on the next screen, then come back. The install carries on from there.</string>
+    <string name="update_awaiting_confirmation">Android needs you to confirm the install</string>
+    <string name="update_finish_install">Finish installing</string>
+    <string name="update_start_over">Start over</string>
+    <string name="update_notifications_off">Notifications are off for this app, so new versions will only show here.</string>
     <string name="update_unsupported">Updates install only over release builds. This is a debug build.</string>
     <string name="update_try_again">Try again</string>
     <string name="update_channel">App updates</string>

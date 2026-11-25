@@ -12,20 +12,24 @@ import kotlinx.serialization.json.Json
  *
  * - drafts and pre-releases are skipped (the endpoint already excludes them;
  *   this is belt and braces);
- * - the tag must be a version, and the asset must be the one the release
- *   workflow uploads, `MyRunningApp-<tag>.apk`;
+ * - the tag must be exactly `vX.Y.Z`, what the release workflow pushes, and
+ *   the asset must be the one it uploads, `MyRunningApp-<tag>.apk`;
  * - the download must come from this repository's own release downloads on
  *   github.com over HTTPS — not any URL a response happens to contain;
  * - the asset must carry a SHA-256 digest, which the download is checked
  *   against. Android separately refuses any APK not signed with the installed
  *   app's key, so the digest's job is catching a truncated or swapped file
- *   before the installer is involved.
+ *   before the installer is involved;
+ * - the release-notes link is kept only if it points at this repository's
+ *   releases, since the app opens it in a browser.
  */
 object ReleaseParser {
 
     const val REPO = "jjbasken/MyRunningApp"
     const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO/releases/latest"
     private const val DOWNLOAD_PREFIX = "https://github.com/$REPO/releases/download/"
+    private const val PAGE_PREFIX = "https://github.com/$REPO/releases/"
+    private val TAG = Regex("""^v\d{1,6}\.\d{1,6}\.\d{1,6}$""")
 
     private val json = Json { ignoreUnknownKeys = true }
     private val SHA256 = Regex("^sha256:([0-9a-fA-F]{64})$")
@@ -35,6 +39,7 @@ object ReleaseParser {
         val release = runCatching { json.decodeFromString(GitHubRelease.serializer(), body) }.getOrNull()
             ?: return null
         if (release.draft || release.prerelease) return null
+        if (!TAG.matches(release.tagName)) return null
         val version = AppVersion.parse(release.tagName) ?: return null
 
         val expectedName = "MyRunningApp-${release.tagName}.apk"
@@ -49,12 +54,15 @@ object ReleaseParser {
             apkUrl = asset.browserDownloadUrl,
             sizeBytes = asset.size,
             sha256 = sha256.lowercase(),
-            pageUrl = release.htmlUrl,
+            pageUrl = release.htmlUrl?.takeIf { it.startsWith(PAGE_PREFIX) },
         )
     }
 
+    // Internal rather than private: kotlinx.serialization's bundled R8 rules
+    // cover either, but this keeps the release (minified) build on the
+    // well-trodden path the app's backup models already use.
     @Serializable
-    private data class GitHubRelease(
+    internal data class GitHubRelease(
         @SerialName("tag_name") val tagName: String,
         @SerialName("html_url") val htmlUrl: String? = null,
         val draft: Boolean = false,
@@ -63,7 +71,7 @@ object ReleaseParser {
     )
 
     @Serializable
-    private data class GitHubAsset(
+    internal data class GitHubAsset(
         val name: String,
         val size: Long = 0,
         val digest: String? = null,
