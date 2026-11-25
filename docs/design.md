@@ -23,7 +23,7 @@ well-bounded units over cleverness.
 | Nature | Learning project; user builds/runs in Android Studio, reviews code, tests on their phone |
 | Storage | **On-device only** (Room). No backend, no account. Export file is the backup. |
 | Maps | **osmdroid** (OpenStreetMap tiles) — no API key, no billing account |
-| Distribution | Personal sideload now; **design with eventual Play Store release in mind** |
+| Distribution | Personal sideload now, signed APKs on GitHub Releases that the app can update itself from; **design with eventual Play Store release in mind** |
 | Announcement content | "N miles. Time, MM minutes SS seconds. Last mile pace, M minutes S seconds." (no avg/current pace in the voice line) |
 | Auto-pause | **No** — manual pause/resume only |
 | Calorie inputs | Profile stores weight + height + age + sex |
@@ -55,16 +55,19 @@ app/
     location/                LocationTrackingService + GPS point pipeline
     repository/              RunRepository, ProfileRepository
     export/                  GPX / JSON writers, GPX reader (Storage Access Framework)
+    update/                  UpdateManager, installer receiver, daily check worker
   domain/
     model/                   Run, RunPoint, Split, Profile, ActivityType, RunSessionState
     tracking/                RunSession state machine, distance & pace math, GPS filter
     calories/                MET-based CalorieCalculator
     announce/                AnnouncementEngine (wraps TextToSpeech), announcement text builder
+    update/                  Release parsing, version compare, verified download copy
   ui/
     track/                   Live run screen (map, live stats, start/countdown/pause/stop)
     history/                 Run list + totals header
     detail/                  Single run: route map, stat block, splits table
     profile/                 Weight/height/age/sex + preferences
+    update/                  App updates section of the Profile screen
     theme/                   Compose theme
 ```
 
@@ -208,6 +211,9 @@ MET-based, explicitly approximate (as Endomondo/MapMyRun were):
   during run, pace-color on map.
 - **Data:** export all (JSON + GPX per run) via Storage Access Framework;
   restoring the JSON backup is a later addition.
+- **App updates** (release builds only): installed version, **Check for
+  updates**, an opt-in **Check for updates daily** switch, and the download /
+  install / confirm controls. See milestone 9.
 
 ## Permissions & platform
 
@@ -217,6 +223,9 @@ MET-based, explicitly approximate (as Endomondo/MapMyRun were):
   Settings); needed for long screen-off tracking on Android 10+.
 - `POST_NOTIFICATIONS` (Android 13+).
 - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`.
+- `REQUEST_INSTALL_PACKAGES` — self-update only. Android still makes the user
+  allow "Install unknown apps" for this app the first time, from its own
+  settings screen; nothing installs without that.
 - **Graceful degradation:** if background location is denied, tracking still works
   with the screen on / app foregrounded, with a warning to the user.
 
@@ -371,6 +380,58 @@ Each milestone builds, runs, and is testable on its own.
    a backup file for it. Statuses are restored, but run links are not: a
    backup's run ids need not exist on the device it is restored to.
 
+9. **Self-update** — release builds update themselves from this repository's
+   GitHub Releases, from an **App updates** section on the Profile screen.
+   A tap on **Check for updates**, or a daily background check the user opts
+   into (**off by default**, like Health Connect, and in the privacy policy
+   for the same reason), asks GitHub's `releases/latest` API whether a newer
+   version exists. The daily check only posts a notification, once per
+   version. Installing is always a tap in the app. *No Play Store, so no Play
+   in-app updates:* the app downloads its own APK and hands it to
+   `PackageInstaller`. That makes the download the attack surface, and the
+   design is about what has to be true before the installer sees a file.
+   `ReleaseParser` is pure and strict. It accepts only a non-draft,
+   non-prerelease release tagged exactly `vX.Y.Z`, the asset the release
+   workflow uploads (`MyRunningApp-<tag>.apk`), a download URL under this
+   repository's `releases/download/<tag>/` on HTTPS, and a SHA-256 `digest` on
+   the asset. A release-notes link is kept only if it points at this
+   repository's releases. `DigestingCopy` streams the download to private
+   cache under a fixed filename, so nothing from the network reaches a path,
+   while hashing it. It aborts as soon as the stream runs past the expected
+   size and refuses a short or mismatched file. The digest arrives over TLS
+   from the API, so which CDN host serves the bytes doesn't matter.
+   `UpdateManager` then checks that the archive's package name is this app's
+   and its `versionCode` is higher, so a bad file fails with a clear message
+   rather than an installer dialog. The signing key is deliberately left to
+   Android, which already refuses any APK not signed like the installed app,
+   and the installer's conflict status is translated into "signed
+   differently". *The run comes first:* an install replaces the app and kills
+   its process, which would end a recording. The install button is disabled
+   during an activity, and `UpdateManager` checks `RunTracker` again
+   immediately before committing the session, because a download takes long
+   enough for a run to start meanwhile. *The confirmation is state, not a
+   side effect:* the installer answers through an unexported receiver with a
+   confirmation `Intent`. Android blocks activity starts from the background,
+   so if the user left the app mid-download the receiver's attempt to open
+   the dialog fails silently. The intent is therefore kept in an
+   `AwaitingConfirmation` state and offered as **Finish installing**, which
+   the screen starts from the foreground activity. **Start over** abandons
+   this app's earlier installer sessions and downloads again, for an install
+   that never gets an answer. Downloads run in the manager's own scope, so
+   leaving Profile doesn't cancel them, and repeat taps are ignored while one
+   is running. The first self-install needs "Install unknown apps" and a
+   confirmation. From Android 12, sessions ask for `USER_ACTION_NOT_REQUIRED`,
+   so later updates can skip the dialog once the app is its own installer of
+   record. Debug builds (`.debug` suffix, debug key) can't take a release APK,
+   so they show a note instead. *Release discipline is enforced, not
+   remembered:* the updater offers a release on `versionName`, but Android
+   compares `versionCode`. A missed bump would ship a release every updater
+   offers and then fails to install, so `release.yml` refuses a tag whose
+   `versionCode` isn't higher than the previous version tag's. 0.3.0 predates
+   all of this, so 0.3.1 had to be sideloaded by hand. It is the first release
+   that can update itself, and the next release is the first real test of the
+   install path.
+
 ## Verification
 
 - **Per milestone:** `./gradlew assembleDebug` builds; `./gradlew testDebugUnitTest`
@@ -402,3 +463,15 @@ Each milestone builds, runs, and is testable on its own.
   couple of seconds: the section must stop saying "Permission needed"
   immediately, not only after several seconds. On a device with no Health
   Connect, confirm the settings section is absent entirely.
+- **Self-update:** on a release build, **Check for updates** reports "latest
+  version" when it is, which also proves the minified build still parses
+  GitHub's JSON. Debug builds show the release-builds-only note. With a newer
+  release published: install it from Profile, allowing "Install unknown apps"
+  when sent there, and confirm the install carries on when you come back.
+  Start a download, leave the app, and come back: **Finish installing** must
+  open the dialog. Back out of the dialog: the update must be offered again.
+  Start an activity, then try to install: the button is disabled and says why.
+  Start an activity mid-download: the install is postponed, not committed.
+  Switch on daily checks with notifications blocked: the section says new
+  versions will only show there. After updating once, the next update should
+  install without a dialog on Android 12+.

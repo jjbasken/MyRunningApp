@@ -86,11 +86,15 @@ be checked in seconds rather than on a run.
    Play Console paperwork this milestone prepares — needed only if the app is
    ever published to Play, not for sideloading.
 
-8. **Training plan & coach** *(current)* — import a race training plan
+8. **Training plan & coach** — import a race training plan
    written by an AI assistant and follow it: a Plan tab with the weeks laid out,
    today's workout on the Track screen, spoken coaching during the run, and each
    run ticked off the plan when it finishes. See
    [Training plans (Milestone 8)](#training-plans-milestone-8).
+
+9. **Self-update** *(current)* — release builds check this repo's GitHub
+   Releases and install a newer, checksum-verified APK from Profile; daily
+   checks are opt-in. See [Updates](#updates).
 
 ## Updates
 
