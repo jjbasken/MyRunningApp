@@ -117,7 +117,9 @@ Release builds can update themselves from this repository's
   recorded, and an activity started mid-download postpones the install.
   Nothing installs in the background: the daily check only notifies.
 - Each release must raise `versionCode` as well as `versionName`; otherwise the
-  app offers the release but refuses the downloaded APK as not newer.
+  app would offer the release but refuse the downloaded APK as not newer. The
+  release workflow fails before building if `versionCode` isn't higher than the
+  previous version tag's.
 
 Debug builds (`com.myrunningapp.debug`, debug-signed) can't take a release APK,
 so the section only says so. To release an update: bump `versionCode` and
