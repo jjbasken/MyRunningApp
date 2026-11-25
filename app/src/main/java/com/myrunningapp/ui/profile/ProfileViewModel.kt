@@ -8,6 +8,10 @@ import com.myrunningapp.data.export.RunExporter
 import com.myrunningapp.data.health.HealthConnectGateway
 import com.myrunningapp.data.health.HealthPermissions
 import com.myrunningapp.data.health.HealthSyncScheduler
+import com.myrunningapp.data.location.RunTracker
+import com.myrunningapp.data.update.UpdateManager
+import com.myrunningapp.data.update.UpdateScheduler
+import com.myrunningapp.data.update.UpdateState
 import com.myrunningapp.data.prefs.PreferencesRepository
 import com.myrunningapp.data.repository.ProfileRepository
 import com.myrunningapp.domain.Units
@@ -16,6 +20,8 @@ import com.myrunningapp.domain.health.HealthSyncUiState
 import com.myrunningapp.domain.model.CountdownLength
 import com.myrunningapp.domain.model.Profile
 import com.myrunningapp.domain.model.Sex
+import com.myrunningapp.BuildConfig
+import com.myrunningapp.ui.update.UpdateSectionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
@@ -27,6 +33,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,6 +48,9 @@ class ProfileViewModel @Inject constructor(
     private val gateway: HealthConnectGateway,
     private val healthSyncDao: HealthSyncDao,
     private val healthSyncScheduler: HealthSyncScheduler,
+    private val updateManager: UpdateManager,
+    private val updateScheduler: UpdateScheduler,
+    private val runTracker: RunTracker,
 ) : ViewModel() {
 
     /**
@@ -65,18 +76,35 @@ class ProfileViewModel @Inject constructor(
         )
     }.flowOn(Dispatchers.IO)
 
+    private val runActive: Flow<Boolean> = runTracker.snapshot.map { it.isActive }.distinctUntilChanged()
+
+    private val update: Flow<UpdateSectionState> = combine(
+        updateManager.state,
+        preferencesRepository.preferences.map { it.updateChecksEnabled }.distinctUntilChanged(),
+        runActive,
+    ) { state, autoCheck, active ->
+        UpdateSectionState(
+            state = state,
+            installedVersion = BuildConfig.VERSION_NAME,
+            autoCheckEnabled = autoCheck,
+            runActive = active,
+        )
+    }
+
     val uiState: StateFlow<ProfileUiState> = combine(
         profileRepository.profile,
         profileRepository.hasSavedProfile,
         preferencesRepository.preferences,
         healthSync,
-    ) { profile, hasSaved, prefs, health ->
+        update,
+    ) { profile, hasSaved, prefs, health, updateSection ->
         ProfileUiState(
             loading = false,
             profile = profile,
             hasSavedProfile = hasSaved,
             preferences = prefs,
             healthSync = health,
+            update = updateSection,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -184,8 +212,39 @@ class ProfileViewModel @Inject constructor(
         healthRefresh.value++
     }
 
+    fun setUpdateChecksEnabled(enabled: Boolean) = viewModelScope.launch {
+        preferencesRepository.setUpdateChecksEnabled(enabled)
+        updateScheduler.apply(enabled)
+        // Switching it on should say something now, not tomorrow.
+        if (enabled) updateManager.checkInBackground()
+    }
+
+    fun checkForUpdate() = updateManager.checkInBackground()
+
+    /**
+     * Installing replaces the app and kills its process, which would cut a run
+     * short; the button is disabled during one, and this re-checks in case the
+     * tap raced a start. The first time, Android also needs the user to allow
+     * this app to install packages, in a settings screen of its own.
+     */
+    fun installUpdate() {
+        if (runTracker.snapshot.value.isActive) return
+        val release = when (val state = updateManager.state.value) {
+            is UpdateState.Available -> state.release
+            is UpdateState.Failed -> state.release
+            else -> null
+        } ?: return
+        if (!updateManager.canRequestInstalls()) {
+            _events.tryEmit(ProfileEvent.AllowInstalls)
+            return
+        }
+        updateManager.installInBackground(release)
+    }
+
     sealed interface ProfileEvent {
         data object Saved : ProfileEvent
+        /** Send the user to "Install unknown apps" for this app. */
+        data object AllowInstalls : ProfileEvent
         data class ValidationError(val message: String) : ProfileEvent
     }
 }

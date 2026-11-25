@@ -25,10 +25,14 @@ class MainActivity : ComponentActivity() {
         // here reopens the privacy policy on every recreate — a rotation, a
         // theme or font-scale change, a process restart.
         if (savedInstanceState == null) handleHealthRationaleIntent(intent)
+        // The update notification lands on Profile, where the install button is.
+        // Same once-only rule as above, for the same sticky-intent reason.
+        val openUpdates = savedInstanceState == null && intent.getBooleanExtra(EXTRA_OPEN_UPDATES, false)
+        intent.removeExtra(EXTRA_OPEN_UPDATES)
         setContent {
             MyRunningTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MainScreen()
+                    MainScreen(openProfile = openUpdates)
                 }
             }
         }
@@ -66,10 +70,13 @@ class MainActivity : ComponentActivity() {
         }.onFailure { e -> Log.w(TAG, "Could not open the privacy policy", e) }
     }
 
-    private companion object {
-        const val TAG = "MainActivity"
-        const val ACTION_SHOW_PERMISSIONS_RATIONALE = "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"
-        const val ACTION_VIEW_PERMISSION_USAGE = "android.intent.action.VIEW_PERMISSION_USAGE"
-        const val PRIVACY_POLICY_URL = "https://jjbasken.github.io/MyRunningApp/"
+    companion object {
+        /** Set by the update notification. */
+        const val EXTRA_OPEN_UPDATES = "com.myrunningapp.extra.OPEN_UPDATES"
+
+        private const val TAG = "MainActivity"
+        private const val ACTION_SHOW_PERMISSIONS_RATIONALE = "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"
+        private const val ACTION_VIEW_PERMISSION_USAGE = "android.intent.action.VIEW_PERMISSION_USAGE"
+        private const val PRIVACY_POLICY_URL = "https://jjbasken.github.io/MyRunningApp/"
     }
 }

@@ -1,6 +1,6 @@
 # Privacy Policy — MyRunningApp
 
-**Effective date:** 9 September 2026
+**Effective date:** 24 November 2026
 
 MyRunningApp is a personal running tracker for Android. It has no accounts, no
 servers, and no analytics. This policy describes the little that it does with
@@ -32,7 +32,7 @@ anyone else. Uninstalling the app deletes all of it.
 
 ## What leaves your device
 
-Three things, each of which you control:
+Four things, each of which you control:
 
 **Map tiles.** To draw a map, the app downloads map images from the
 OpenStreetMap tile servers. Those servers necessarily see requests for the areas
@@ -52,6 +52,14 @@ have granted to other apps that read it. The app never reads your Health Connect
 data; it only writes its own runs. Turning the setting off stops further writing;
 data already written stays until you remove it in Health Connect.
 
+**Update checks.** Releases of the app are published on GitHub. When you tap
+**Check for updates**, or once a day if you switch on **Check for updates
+daily** (off by default), the app asks GitHub's public API for the latest
+release. If you then choose to install it, the app downloads the release file
+from GitHub. These requests carry your IP address and the app's package name
+and nothing else — no run data, profile data or identifier. GitHub's own privacy
+statement governs what it does with them.
+
 **Files you export.** When you tap export, the app writes GPX or JSON files to a
 location you pick. Where those files go next is up to you.
 
@@ -68,6 +76,7 @@ analytics or tracking service, and never transmitted to the developer.
 | Background location (optional) | Keeps recording when the screen is off or the app is not in front. Declining it means tracking works only with the app open. |
 | Notifications | Shows the ongoing-run notification with live stats and controls. |
 | Health Connect write permissions (optional) | Writes finished workouts, and optionally their routes, into Health Connect. |
+| Install unknown apps (optional) | Installs an update you chose to download from the app's GitHub releases. Android asks for it the first time you install one. |
 
 Every optional permission can be declined, and the app keeps working without it.
 

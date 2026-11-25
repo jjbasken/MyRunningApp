@@ -92,6 +92,32 @@ be checked in seconds rather than on a run.
    run ticked off the plan when it finishes. See
    [Training plans (Milestone 8)](#training-plans-milestone-8).
 
+## Updates
+
+Release builds can update themselves from this repository's
+[GitHub Releases](https://github.com/jjbasken/MyRunningApp/releases), from the
+**App updates** section of the Profile screen:
+
+- **Check for updates** asks GitHub's API for the latest release. Switching on
+  **Check for updates daily** (off by default) runs the same check once a day in
+  the background and posts a notification when a newer version appears; each
+  version notifies once.
+- **Download and install** fetches the release's APK, refuses it unless its
+  size and SHA-256 match what GitHub reports for the asset and its package name
+  and `versionCode` are newer than the installed app's, then hands it to
+  Android's package installer. Android itself refuses any APK not signed with
+  the installed app's key.
+- The first install needs **Install unknown apps** allowed for this app (the
+  app opens that settings screen) and a confirmation dialog. On Android 12 and
+  later, updates after that one can go through without the dialog.
+- Installing restarts the app, so it is disabled while an activity is being
+  recorded. Nothing installs in the background: the daily check only notifies.
+
+Debug builds (`com.myrunningapp.debug`, debug-signed) can't take a release APK,
+so the section only says so. To release an update: bump `versionCode` and
+`versionName`, merge, and push the matching tag — the release workflow's APK
+name (`MyRunningApp-vX.Y.Z.apk`) is what the updater looks for.
+
 ## Interrupted activities and privacy
 
 Active activities are excluded from History and protected against deletion or

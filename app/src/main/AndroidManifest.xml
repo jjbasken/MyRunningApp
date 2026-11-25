@@ -23,6 +23,9 @@
     <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />
 
+    <!-- Self-update from GitHub Releases. Android still asks the user to allow it. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <uses-feature
         android:name="android.hardware.location.gps"
         android:required="true" />
@@ -97,6 +100,11 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <!-- The package installer's verdict on a self-update session. -->
+        <receiver
+            android:name=".data.update.UpdateInstallReceiver"
+            android:exported="false" />
 
         <!-- WorkManager is configured in MyRunningApp so Hilt can inject workers. -->
         <provider

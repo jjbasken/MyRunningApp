@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.myrunningapp.domain.model.CountdownLength
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -28,6 +29,8 @@ class PreferencesRepository @Inject constructor(
             backgroundWarningDismissed = prefs[Keys.BACKGROUND_WARNING_DISMISSED] ?: false,
             healthSyncEnabled = prefs[Keys.HEALTH_SYNC_ENABLED] ?: false,
             healthPermissionAsked = prefs[Keys.HEALTH_PERMISSION_ASKED] ?: false,
+            updateChecksEnabled = prefs[Keys.UPDATE_CHECKS_ENABLED] ?: false,
+            lastNotifiedUpdate = prefs[Keys.LAST_NOTIFIED_UPDATE],
         )
     }
 
@@ -63,6 +66,14 @@ class PreferencesRepository @Inject constructor(
         dataStore.edit { it[Keys.HEALTH_PERMISSION_ASKED] = asked }
     }
 
+    suspend fun setUpdateChecksEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.UPDATE_CHECKS_ENABLED] = enabled }
+    }
+
+    suspend fun setLastNotifiedUpdate(tag: String) {
+        dataStore.edit { it[Keys.LAST_NOTIFIED_UPDATE] = tag }
+    }
+
     private object Keys {
         val COUNTDOWN_SECONDS = intPreferencesKey("countdown_seconds")
         val VOICE = booleanPreferencesKey("voice_announcements")
@@ -72,5 +83,7 @@ class PreferencesRepository @Inject constructor(
         val BACKGROUND_WARNING_DISMISSED = booleanPreferencesKey("background_warning_dismissed")
         val HEALTH_SYNC_ENABLED = booleanPreferencesKey("health_sync_enabled")
         val HEALTH_PERMISSION_ASKED = booleanPreferencesKey("health_permission_asked")
+        val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
+        val LAST_NOTIFIED_UPDATE = stringPreferencesKey("last_notified_update")
     }
 }
